@@ -3,18 +3,24 @@
 
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
 #include <string.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <sys/mman.h>
 #include <utime.h>
 #include <dirent.h>
+#include <pthread.h>
 #include <zlib.h>
 
 #define SAR_MAGIC "SAR" /* Magic string at start of every header */
 #define SAR_VERSION 1 /* format version */
 #define SAR_MAX_PATH 4096 /* max length of stored path */
 #define SAR_ARCHIVE_BUF_SIZE 1024*1024 /* 1MB read buffer */
+#define SAR_PACK_THREADS 4 /* Worker threads */
 
 #define COPY_BUFFER_SIZE 4096 
 #define ZCHUNK 16384
@@ -39,6 +45,7 @@ typedef enum {
 
 int pack(const char *archive_path, const char **filepaths, int count, int verbose);
 int pack_file(FILE *archive, const char *filepath, int verbose);
+int pack_threads(const char *archive_path, const char **filepaths, int count, int verbose);
 int unpack(const char *archive_path, int verbose);
 int unpack_file(FILE *archive, int verbose);
 int compressArch(const char *dst_path, const char *src_path, int verbose);

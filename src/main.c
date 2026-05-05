@@ -36,7 +36,8 @@ static void usage(const char *name){
   fprintf(stderr, "  %s g   <archive.sar|.sgz> <file1..fileN>  Grab specific files contained in a SAR archive.\n", name);
   fprintf(stderr, "  %s i   <archive.sar|.sgz> <file1..fileN>  Insert specific files to a SAR archive.\n", name);
   fprintf(stderr, "Flags:\n");
-  fprintf(stderr, "  -v verbose output\n");
+  fprintf(stderr, "  -v verbose output.\n");
+  fprintf(stderr, "  -j enable threading for packing.\n");
 }
 
 int main(int argc, char *argv[]){
@@ -47,6 +48,7 @@ int main(int argc, char *argv[]){
   const char *tmpFile = "sar.tmp";
   int i = 0;
   int verbose = 0;
+  int threads = 0;
   int nfiles = 0;
   ArchiveFormat archive_format = ARCHIVE_DOESNOTEXIST;
 
@@ -60,6 +62,9 @@ int main(int argc, char *argv[]){
   for (i = 1; i < argc; ++i){
     if(strcmp(argv[i], "-v") == 0){
       verbose = 1;
+      argv[i] = NULL;
+    } else if(strcmp(argv[i], "-j") == 0){
+      threads = 1;
       argv[i] = NULL;
     }
   }
@@ -94,7 +99,11 @@ int main(int argc, char *argv[]){
       return 1;
     }
 
-    return pack(archive_path, filepaths, nfiles, verbose) == 0 ? 0 : 1;
+    if (threads == 0){
+      return pack(archive_path, filepaths, nfiles, verbose) == 0 ? 0 : 1;
+    } else {
+      return pack_threads(archive_path, filepaths, nfiles, verbose) == 0 ? 0 : 1;
+    }
 
   /* Action - pz */
   } else if (strcmp(action, "pz") == 0){
@@ -104,9 +113,16 @@ int main(int argc, char *argv[]){
       return 1;
     }
 
-    if (pack(tmpFile, filepaths, nfiles, verbose) != 0){
-      fprintf(stderr, "error: pack failed\n");
-      return 1;
+    if (threads == 0){
+      if (pack(tmpFile, filepaths, nfiles, verbose) != 0){
+        fprintf(stderr, "error: pack failed\n");
+        return 1;
+      }
+    } else {
+      if (pack_threads(tmpFile, filepaths, nfiles, verbose) != 0){
+        fprintf(stderr, "error: pack failed\n");
+        return 1;
+      }
     }
 
     if (compressArch(archive_path, tmpFile, verbose) != 0) {
