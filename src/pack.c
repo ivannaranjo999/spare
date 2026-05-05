@@ -210,14 +210,14 @@ int pack_threads(const char *archive_path, const char **filepaths, int count, in
     printf("pre-allocating files in memory ...\n");
 
   for (int i = 0; i < count; i++) {
-      if (collect_files(filepaths[i], &items, &n_items, &capacity) != 0)
-          result = -1;
+    if (collect_files(filepaths[i], &items, &n_items, &capacity) != 0)
+        result = -1;
   }
 
   if (n_items == 0) {
-      fprintf(stderr, "error: no files to pack\n");
-      free(items);
-      return -1;
+    fprintf(stderr, "error: no files to pack\n");
+    free(items);
+    return -1;
   }
 
   /* --- phase 2: calculate total archive size -------------------- */
