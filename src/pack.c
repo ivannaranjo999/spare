@@ -80,7 +80,7 @@ static int collect_files(const char *filepath, WorkItem **items, int *count, int
     *capacity = new_cap;
   }
 
-  /* fill in the work item — dest is assigned later by assign_offsets */
+  /* fill in the work item, dest is assigned later by assign_offsets */
   WorkItem *w = &(*items)[*count];
   memset(w, 0, sizeof(*w));
   strncpy(w->filepath, filepath, SAR_MAX_PATH - 1);
@@ -271,7 +271,7 @@ int pack_threads(const char *archive_path, const char **filepaths, int count, in
   pthread_t  threads[SAR_PACK_THREADS];
   ThreadArgs args[SAR_PACK_THREADS];
 
-  /* distribute items evenly — first (n_items % n_threads) threads  */
+  /* distribute items evenly, first (n_items % n_threads) threads  */
   /* get one extra item so no file is left unassigned               */
   int base   = n_items / n_threads;
   int extra  = n_items % n_threads;
@@ -442,108 +442,4 @@ int pack(const char *archive_path, const char **filepaths, int count, int verbos
 
   fclose(archive);
   return result;
-}
-
-/* ----------------------------------------------------------------------------
- * compressArch
- *
- * Compress to 'dst' from 'src'
- * Returns 0 on success, -1 on error.
- * ------------------------------------------------------------------------- */
-int compressArch(const char *dst_path, const char *src_path, int verbose){
-  /* Local variables */
-  int ret, flush;
-  unsigned have;
-  z_stream strm;
-  unsigned char in[ZCHUNK];
-  unsigned char out[ZCHUNK];
-  FILE *dst;
-  FILE *src;
-
-  /* Code */
-  if (verbose)
-    printf("compressing to '%s'\n", 
-      dst_path);
-
-  dst = fopen(dst_path, "wb");
-  if (dst == NULL) {
-    fprintf(stderr, "error: could not open '%s'\n", dst_path);
-    return -1;
-  }
-  setvbuf(dst, NULL, _IOFBF, SAR_ARCHIVE_BUF_SIZE);
-
-  src = fopen(src_path, "rb");
-  if (src == NULL) {
-    fprintf(stderr, "error: could not open '%s'\n", src_path);
-    fclose(dst);
-    return -1;
-  }
-  setvbuf(src, NULL, _IOFBF, SAR_ARCHIVE_BUF_SIZE);
-
-  /* Initialize the zlib stream for compression */
-  strm.zalloc = Z_NULL;
-  strm.zfree = Z_NULL;
-  strm.opaque = Z_NULL;
-  ret = deflateInit2(&strm,
-                     Z_DEFAULT_COMPRESSION,
-                     Z_DEFLATED,
-                     15+16,
-                     8,
-                     Z_DEFAULT_STRATEGY);
-  if (ret != Z_OK){
-    return -1;
-    fclose(dst);
-    fclose(src);
-  } 
-
-  /* Compress until EOF */
-  do {
-    strm.avail_in = fread(in, 1, ZCHUNK, src);
-    if (ferror(src)) {
-      (void)deflateEnd(&strm);
-      return -1;
-    }
-    flush = feof(src) ? Z_FINISH : Z_NO_FLUSH;
-    strm.next_in = in;
-
-    /* Run deflate() on input until output buffer not full */
-    do {
-      strm.avail_out = ZCHUNK;
-      strm.next_out = out;
-      ret = deflate(&strm, flush);
-      if(ret == Z_STREAM_ERROR){
-        fprintf(stderr, "error: failure during compression\n");
-        fclose(dst);
-        fclose(src);
-        return -1;
-      }
-      have = ZCHUNK - strm.avail_out;
-      if (fwrite(out, 1, have, dst) != have || ferror(dst)) {
-        (void)deflateEnd(&strm);
-        fclose(dst);
-        fclose(src);
-        return -1;
-      }
-    } while (strm.avail_out == 0);
-    if (strm.avail_in != 0){
-      fprintf(stderr, "error: failure during compression\n");
-      fclose(dst);
-      fclose(src);
-      return -1;
-    }
-  } while (flush != Z_FINISH);
-  if(ret != Z_STREAM_END){
-      fprintf(stderr, "error: failure during compression\n");
-      fclose(dst);
-      fclose(src);
-      return -1;
-  }
-
-  /* Clean up */
-  (void)deflateEnd(&strm);
-
-  fclose(dst);
-  fclose(src);
-
-  return 0;
 }

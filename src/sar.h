@@ -20,10 +20,14 @@
 #define SAR_VERSION 1 /* format version */
 #define SAR_MAX_PATH 4096 /* max length of stored path */
 #define SAR_ARCHIVE_BUF_SIZE 1024*1024 /* 1MB read buffer */
-#define SAR_PACK_THREADS 4 /* Worker threads */
+
+#define SAR_PACK_THREADS 4 /* Pack worker threads */
+#define SAR_COMPRESS_THREADS 4 /* Compression worker threads*/
 
 #define COPY_BUFFER_SIZE 4096 
 #define ZCHUNK 16384
+#define COMPRESS_CHUNK (128 * 1024) /* 128 KB input per chunk */
+#define DICT_SIZE (32  * 1024) /* 32  KB dictionary */
 
 typedef struct {
   char     magic[3];
@@ -48,8 +52,9 @@ int pack_file(FILE *archive, const char *filepath, int verbose);
 int pack_threads(const char *archive_path, const char **filepaths, int count, int verbose);
 int unpack(const char *archive_path, int verbose);
 int unpack_file(FILE *archive, int verbose);
-int compressArch(const char *dst_path, const char *src_path, int verbose);
-int decompressArch(const char *dst_path, const char *src_path, int verbose);
+int compress_arch(const char *dst_path, const char *src_path, int verbose);
+int compress_arch_threads(const char *dst_path, const char *src_path, int verbose);
+int decompress_arch(const char *dst_path, const char *src_path, int verbose);
 int list(const char *archive_path);
 int grab(const char *archive_path, const char **filepaths, int count, int verbose);
 int insert(const char *archive_path, const char **filepaths, int count, int verbose);

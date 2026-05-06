@@ -37,7 +37,9 @@ static void usage(const char *name){
   fprintf(stderr, "  %s i   <archive.sar|.sgz> <file1..fileN>  Insert specific files to a SAR archive.\n", name);
   fprintf(stderr, "Flags:\n");
   fprintf(stderr, "  -v verbose output.\n");
-  fprintf(stderr, "  -j enable threading for packing.\n");
+  fprintf(stderr, "  -p enable threading for packing.\n");
+  fprintf(stderr, "  -c enable threading for compression.\n");
+  fprintf(stderr, "  -T p and c flags.\n");
 }
 
 int main(int argc, char *argv[]){
@@ -48,7 +50,8 @@ int main(int argc, char *argv[]){
   const char *tmpFile = "sar.tmp";
   int i = 0;
   int verbose = 0;
-  int threads = 0;
+  int threads_pack = 0;
+  int threads_compress = 0;
   int nfiles = 0;
   ArchiveFormat archive_format = ARCHIVE_DOESNOTEXIST;
 
@@ -63,8 +66,15 @@ int main(int argc, char *argv[]){
     if(strcmp(argv[i], "-v") == 0){
       verbose = 1;
       argv[i] = NULL;
-    } else if(strcmp(argv[i], "-j") == 0){
-      threads = 1;
+    } else if(strcmp(argv[i], "-p") == 0){
+      threads_pack = 1;
+      argv[i] = NULL;
+    } else if(strcmp(argv[i], "-c") == 0){
+      threads_compress = 1;
+      argv[i] = NULL;
+    } else if(strcmp(argv[i], "-T") == 0){
+      threads_pack = 1;
+      threads_compress = 1;
       argv[i] = NULL;
     }
   }
@@ -99,7 +109,7 @@ int main(int argc, char *argv[]){
       return 1;
     }
 
-    if (threads == 0){
+    if (threads_pack == 0){
       return pack(archive_path, filepaths, nfiles, verbose) == 0 ? 0 : 1;
     } else {
       return pack_threads(archive_path, filepaths, nfiles, verbose) == 0 ? 0 : 1;
@@ -113,7 +123,7 @@ int main(int argc, char *argv[]){
       return 1;
     }
 
-    if (threads == 0){
+    if (threads_pack == 0){
       if (pack(tmpFile, filepaths, nfiles, verbose) != 0){
         fprintf(stderr, "error: pack failed\n");
         return 1;
@@ -125,9 +135,16 @@ int main(int argc, char *argv[]){
       }
     }
 
-    if (compressArch(archive_path, tmpFile, verbose) != 0) {
-      fprintf(stderr, "error: compress failed\n");
-      return 1;
+    if (threads_compress == 0){
+      if (compress_arch(archive_path, tmpFile, verbose) != 0) {
+        fprintf(stderr, "error: compress failed\n");
+        return 1;
+      }
+    } else {
+      if (compress_arch_threads(archive_path, tmpFile, verbose) != 0) {
+        fprintf(stderr, "error: compress failed\n");
+        return 1;
+      }
     }
 
     return remove(tmpFile) == 0 ? 0 : 1;
@@ -137,7 +154,7 @@ int main(int argc, char *argv[]){
     if (archive_format == ARCHIVE_SAR) {
       return unpack(archive_path, verbose) == 0 ? 0 : 1;
     } else if (archive_format == ARCHIVE_SGZ) {
-      if(decompressArch(tmpFile, archive_path, verbose) != 0){
+      if(decompress_arch(tmpFile, archive_path, verbose) != 0){
         fprintf(stderr, "error: decompress failed\n");
         return 1;
       }
@@ -159,7 +176,7 @@ int main(int argc, char *argv[]){
     if (archive_format == ARCHIVE_SAR) {
       return list(archive_path);
     } else if (archive_format == ARCHIVE_SGZ) {
-      if(decompressArch(tmpFile, archive_path, verbose) != 0){
+      if(decompress_arch(tmpFile, archive_path, verbose) != 0){
         fprintf(stderr, "error: decompress failed\n");
         return 1;
       }
@@ -181,7 +198,7 @@ int main(int argc, char *argv[]){
     if (archive_format == ARCHIVE_SAR) {
       return grab(archive_path, filepaths, nfiles, verbose) == 0 ? 0 : 1;
     } else if (archive_format == ARCHIVE_SGZ) {
-      if(decompressArch(tmpFile, archive_path, verbose) != 0){
+      if(decompress_arch(tmpFile, archive_path, verbose) != 0){
         fprintf(stderr, "error: decompress failed\n");
         return 1;
       }
@@ -209,7 +226,7 @@ int main(int argc, char *argv[]){
 
       return pack(archive_path, filepaths, nfiles, verbose) == 0 ? 0 : 1;
     } else if (archive_format == ARCHIVE_SGZ) {
-      if(decompressArch(tmpFile, archive_path, verbose) != 0){
+      if(decompress_arch(tmpFile, archive_path, verbose) != 0){
         fprintf(stderr, "error: decompress failed\n");
         return 1;
       }
@@ -219,9 +236,16 @@ int main(int argc, char *argv[]){
         return 1;
       }
 
-      if (compressArch(archive_path, tmpFile, verbose) != 0) {
-        fprintf(stderr, "error: compress failed\n");
-        return 1;
+      if (threads_compress == 0){
+        if (compress_arch(archive_path, tmpFile, verbose) != 0) {
+          fprintf(stderr, "error: compress failed\n");
+          return 1;
+        }
+      } else {
+        if (compress_arch_threads(archive_path, tmpFile, verbose) != 0) {
+          fprintf(stderr, "error: compress failed\n");
+          return 1;
+        }
       }
 
       return remove(tmpFile) == 0 ? 0 : 1;
