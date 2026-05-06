@@ -3,7 +3,7 @@ Simple ARchiver, SAR, is a C tool that is able to **archive** a list of files an
 
 - 🌲 Listing the contents of a `.sar|.sgz` file.
 - 🌳 Grabbing specific files or directories from a `.sar|.sgz` file.
-- 🌴 Inserting specific files or directories from a `.sar|.sgz` file.
+- 🌴 Inserting specific files or directories to a `.sar|.sgz` file.
 - 🐷 Flags for multithreading in packing and compression (pigz style!).
 
 The tool is used as follows:
