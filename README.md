@@ -25,7 +25,7 @@ Flags:
 ```
 ## Benchmarks
 ### Conditions
-The following command is run before every run to ensure OS page caching are dropped. 
+The following command is run before every command to ensure OS page caching are dropped. 
 ```
 sync && echo 3 | sudo tee /proc/sys/vm/drop_caches
 ```
@@ -34,41 +34,45 @@ Each command is ran **thrice** and the **median** is taken.
 
 ### Speed matrix
 
-
 Command legend:
 | Operation         | tar     | sar    | sar -p    | sar -c    | sar -T    |
 |-------------------|---------|--------|-----------|-----------|-----------|
 | Pack              | tar cf  | sar p  | sar -p p  | -         | -         |
 | Pack and compress | tar czf | sar pz | sar -p pz | sar -c pz | sar -T pz |
 | Unpack            | tar xf  | sar u  | -         | -         | -         |
+| Unpack compressed | tar xzf | sar u  | -         | -         | -         |
 
 **User time** for [Linux kernel 7.0](https://cdn.kernel.org/pub/linux/kernel/v7.x/linux-7.0.tar.xz)
 | Operation         | tar     | sar    | sar -p    | sar -c    | sar -T    |
 |-------------------|---------|--------|-----------|-----------|-----------|
-| Pack              | pending | pending| pending   | -         | -         |
-| Pack and compress | pending | pending| pending   | pending   | pending   |
-| Unpack            | pending | pending| -         | -         | -         |
+| Pack              | 1.26s   | 1.92s  | 1.74s     | -         | -         |
+| Pack and compress | 45.80s  | 49.41s | 50.06s    | 72.63s    | 71.90s    |
+| Unpack            | 0.66s   | 1.37s  | -         | -         | -         |
+| Unpack compressed | 6.24s   | 8.68s  | -         | -         | -         |
 
 **Sys time** for [Linux kernel 7.0](https://cdn.kernel.org/pub/linux/kernel/v7.x/linux-7.0.tar.xz)
 | Operation         | tar     | sar    | sar -p    | sar -c    | sar -T    |
 |-------------------|---------|--------|-----------|-----------|-----------|
-| Pack              | pending | pending| pending   | -         | -         |
-| Pack and compress | pending | pending| pending   | pending   | pending   |
-| Unpack            | pending | pending| -         | -         | -         |
+| Pack              | 6.18s   | 6.62s  | 6.89s     | -         | -         |
+| Pack and compress | 4.43s   | 7.77s  | 7.23s     | 11.94s    | 10.58s    |
+| Unpack            | 3.73s   | 5.30s  | -         | -         | -         |
+| Unpack compressed | 4.40s   | 5.99s  | -         | -         | -         |
 
 **Total time** for [Linux kernel 7.0](https://cdn.kernel.org/pub/linux/kernel/v7.x/linux-7.0.tar.xz)
 | Operation         | tar     | sar    | sar -p    | sar -c    | sar -T    |
 |-------------------|---------|--------|-----------|-----------|-----------|
-| Pack              | pending | pending| pending   | -         | -         |
-| Pack and compress | pending | pending| pending   | pending   | pending   |
-| Unpack            | pending | pending| -         | -         | -         |
+| Pack              | 21.955s | 25.135s| 12.615s   | -         | -         |
+| Pack and compress | 46.237s | 71.21s | 58.670s   | 47.446s   | 34.487s   |
+| Unpack            | 8.010s  | 10.778s| -         | -         | -         |
+| Unpack compressed | 7.154s  | 17.375s| -         | -         | -         |
 
 ### Compression matrix
 
 Ratios for [Linux kernel 7.0](https://cdn.kernel.org/pub/linux/kernel/v7.x/linux-7.0.tar.xz)
-|       | tar czf | sar pz | sar -c pz | sar -T pz |
-|-------|---------|--------|-----------|-----------|
-| Ratio |         |        |           |           |
+|                 | tar czf        | sar pz         | sar -T pz        |
+|-----------------|----------------|----------------|------------------|
+| Absolute values | 268216/1846928 | 274304/1846928 | 274224/1846928   |
+| Ratio           | 14.52%         | 14.85%         | 14.84%           |
 
 ## The format
 SAR archives are just a flat binary file which is built as a concatenation of blocks, one per file. Each block contains a header and the file contents. The header is a fixed-size C struct storing everything needed to reconstruct the file.
