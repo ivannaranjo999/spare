@@ -24,7 +24,51 @@ Flags:
   -T p and c flags.
 ```
 ## Benchmarks
-PENDING
+### Conditions
+The following command is run before every run to ensure OS page caching are dropped. 
+```
+sync && echo 3 | sudo tee /proc/sys/vm/drop_caches
+```
+
+Each command is ran thrice and the median is taken.
+
+### Speed matrix
+
+
+Command legend:
+| Operation         | tar     | sar    | sar -p    | sar -c    | sar -T    |
+|-------------------|---------|--------|-----------|-----------|-----------|
+| Pack              | tar cf  | sar p  | sar -p p  | -         | -         |
+| Pack and compress | tar czf | sar pz | sar -p pz | sar -c pz | sar -T pz |
+| Unpack            | tar xf  | sar u  | -         | -         | -         |
+
+**User time** for (Linux kernel 6.9)[https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.9.tar.xz]
+| Operation         | tar     | sar    | sar -p    | sar -c    | sar -T    |
+|-------------------|---------|--------|-----------|-----------|-----------|
+| Pack              | pending | pending| pending   | -         | -         |
+| Pack and compress | pending | pending| pending   | pending   | pendin    |
+| Unpack            | pending | pending| -         | -         | -         |
+
+**Sys time** for (Linux kernel 6.9)[https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.9.tar.xz]
+| Operation         | tar     | sar    | sar -p    | sar -c    | sar -T    |
+|-------------------|---------|--------|-----------|-----------|-----------|
+| Pack              | pending | pending| pending   | -         | -         |
+| Pack and compress | pending | pending| pending   | pending   | pendin    |
+| Unpack            | pending | pending| -         | -         | -         |
+
+**Total time** for (Linux kernel 6.9)[https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.9.tar.xz]
+| Operation         | tar     | sar    | sar -p    | sar -c    | sar -T    |
+|-------------------|---------|--------|-----------|-----------|-----------|
+| Pack              | pending | pending| pending   | -         | -         |
+| Pack and compress | pending | pending| pending   | pending   | pendin    |
+| Unpack            | pending | pending| -         | -         | -         |
+
+### Compression matrix
+
+Ratios for (Linux kernel 6.9)[https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.9.tar.xz]
+|       | tar czf | sar pz | sar -c pz | sar -T pz |
+|-------|---------|--------|-----------|-----------|
+| Ratio |         |        |           |           |
 
 ## The format
 SAR archives are just a flat binary file which is built as a concatenation of blocks, one per file. Each block contains a header and the file contents. The header is a fixed-size C struct storing everything needed to reconstruct the file.
