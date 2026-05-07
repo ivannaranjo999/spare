@@ -42,21 +42,21 @@ Command legend:
 | Pack and compress | tar czf | sar pz | sar -p pz | sar -c pz | sar -T pz |
 | Unpack            | tar xf  | sar u  | -         | -         | -         |
 
-**User time** for [Linux kernel 6.9](https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.9.tar.xz)
+**User time** for [Linux kernel 7.0](https://cdn.kernel.org/pub/linux/kernel/v7.x/linux-7.0.tar.xz)
 | Operation         | tar     | sar    | sar -p    | sar -c    | sar -T    |
 |-------------------|---------|--------|-----------|-----------|-----------|
 | Pack              | pending | pending| pending   | -         | -         |
 | Pack and compress | pending | pending| pending   | pending   | pending   |
 | Unpack            | pending | pending| -         | -         | -         |
 
-**Sys time** for [Linux kernel 6.9](https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.9.tar.xz)
+**Sys time** for [Linux kernel 7.0](https://cdn.kernel.org/pub/linux/kernel/v7.x/linux-7.0.tar.xz)
 | Operation         | tar     | sar    | sar -p    | sar -c    | sar -T    |
 |-------------------|---------|--------|-----------|-----------|-----------|
 | Pack              | pending | pending| pending   | -         | -         |
 | Pack and compress | pending | pending| pending   | pending   | pending   |
 | Unpack            | pending | pending| -         | -         | -         |
 
-**Total time** for [Linux kernel 6.9](https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.9.tar.xz)
+**Total time** for [Linux kernel 7.0](https://cdn.kernel.org/pub/linux/kernel/v7.x/linux-7.0.tar.xz)
 | Operation         | tar     | sar    | sar -p    | sar -c    | sar -T    |
 |-------------------|---------|--------|-----------|-----------|-----------|
 | Pack              | pending | pending| pending   | -         | -         |
@@ -65,7 +65,7 @@ Command legend:
 
 ### Compression matrix
 
-Ratios for [Linux kernel 6.9](https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.9.tar.xz)
+Ratios for [Linux kernel 7.0](https://cdn.kernel.org/pub/linux/kernel/v7.x/linux-7.0.tar.xz)
 |       | tar czf | sar pz | sar -c pz | sar -T pz |
 |-------|---------|--------|-----------|-----------|
 | Ratio |         |        |           |           |
