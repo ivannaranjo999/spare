@@ -65,7 +65,7 @@ Command legend:
 
 ### Compression matrix
 
-Ratios for (Linux kernel 6.9)[https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.9.tar.xz]
+Ratios for [Linux kernel 6.9](https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.9.tar.xz)
 |       | tar czf | sar pz | sar -c pz | sar -T pz |
 |-------|---------|--------|-----------|-----------|
 | Ratio |         |        |           |           |
