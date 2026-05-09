@@ -1,114 +1,262 @@
 #include "sar.h"
 
+/* Struct for parallel compression */
 typedef struct {
-  uint8_t *input;      /* raw chunk data to compress               */
-  size_t   input_len;  /* bytes in this chunk                      */
-  uint8_t *dict;       /* last DICT_SIZE bytes of prev chunk raw   */
-  size_t   dict_len;   /* 0 for first chunk                        */
-  uint8_t *output;     /* compressed raw deflate output            */
-  size_t   output_cap; /* allocated size of output buffer          */
-  size_t   output_len; /* bytes written by thread                  */
-  int      is_last;    /* 1 if this is the final chunk             */
-  int      result;     /* 0 = ok, -1 = error                       */
+  uint8_t *input;    /* raw chunk data to compress */
+  size_t input_len;  /* bytes in this chunk */
+  uint8_t *dict;     /* last DICT_SIZE bytes of prev chunk raw */
+  size_t dict_len;   /* 0 for first chunk */
+  uint8_t *output;   /* compressed raw deflate output */
+  size_t output_cap; /* allocated size of output buffer */
+  size_t output_len; /* bytes written by thread */
+  int is_last;       /* 1 if this is the final chunk */
+  int result;        /* 0 = ok, -1 = error */
 } CompressChunk;
 
 /* ----------------------------------------------------------------------------
- * decompress_arch
+ * compress_worker
  *
- * Decompress to 'dst' from 'src'
- * Returns 0 on success, -1 on error.
+ * Function called by worker threads, compressed one chunk of data as a raw 
+ * deflate block. 
  * ------------------------------------------------------------------------- */
-int decompress_arch(const char *dst_path, const char *src_path, int verbose){
+static void *compress_worker(void *arg){
   /* Local variables */
-  int ret;
-  unsigned have;
+  CompressChunk *c = (CompressChunk *)arg;
   z_stream strm;
-  unsigned char in[ZCHUNK];
-  unsigned char out[ZCHUNK];
-  FILE *dst;
-  FILE *src;
+  int ret, flush_mode;
+  uint8_t *out_ptr = NULL;
+  size_t out_rem, produced ;
+  uInt avail;
 
   /* Code */
-  if (verbose)
-    printf("decompressing from '%s'\n", 
-      src_path);
+  c->result     = 0;
+  c->output_len = 0;
 
-  dst = fopen(dst_path, "wb");
-  if(dst == NULL){
-    fprintf(stderr, "error: could not open '%s'\n", dst_path);
-    return -1;
-  }
-  setvbuf(dst, NULL, _IOFBF, SAR_ARCHIVE_BUF_SIZE);
+  memset(&strm, 0, sizeof(strm));
 
-  src = fopen(src_path, "rb");
-  if(src == NULL){
-    fprintf(stderr, "error: could not open '%s'\n", dst_path);
-    fclose(dst);
-    return -1;
-  }
-  setvbuf(src, NULL, _IOFBF, SAR_ARCHIVE_BUF_SIZE);
-
-  /* Initialize the zlib stream for decompression */
-  strm.zalloc   = Z_NULL;
-  strm.zfree    = Z_NULL;
-  strm.opaque   = Z_NULL;
-  strm.avail_in = 0;
-  strm.next_in  = Z_NULL;
-  ret = inflateInit2(&strm, 15 + 16);
+  /* windowBits = -15: raw deflate, no zlib headers */
+  ret = deflateInit2(&strm,
+                    Z_DEFAULT_COMPRESSION,
+                    Z_DEFLATED,
+                    -15,
+                    8,
+                    Z_DEFAULT_STRATEGY);
   if (ret != Z_OK) {
-    fclose(dst);
-    fclose(src);
-    return -1;
+    fprintf(stderr, "compress_worker: deflateInit2 failed (%d)\n", ret);
+    c->result = -1;
+    return NULL;
   }
 
-  /* Decompress until EOF */
-  do{
-    strm.avail_in = fread(in, 1, ZCHUNK, src);
-    if(ferror(src)){
-      (void)inflateEnd(&strm);
-      fclose(dst);
-      fclose(src);
-      return -1;
+  /* seed the dictionary with the tail of the previous chunk's raw data */
+  if (c->dict != NULL && c->dict_len > 0) {
+    ret = deflateSetDictionary(&strm, c->dict, (uInt)c->dict_len);
+    if (ret != Z_OK) {
+      fprintf(stderr, "compress_worker: deflateSetDictionary failed (%d)\n", ret);
+      deflateEnd(&strm);
+      c->result = -1;
+      return NULL;
     }
-    if(strm.avail_in == 0) break;
-    strm.next_in = in;
-
-    do{
-      strm.avail_out = ZCHUNK;
-      strm.next_out  = out;
-      ret = inflate(&strm, Z_NO_FLUSH);
-      if (ret == Z_STREAM_ERROR  ||
-          ret == Z_NEED_DICT     ||
-          ret == Z_DATA_ERROR    ||
-          ret == Z_MEM_ERROR) {
-        fprintf(stderr, "error: failure during decompression (%d)\n", ret);
-        (void)inflateEnd(&strm);
-        fclose(dst);
-        fclose(src);
-        return -1;
-      }
-      have = ZCHUNK - strm.avail_out;
-      if (fwrite(out, 1, have, dst) != have || ferror(dst)) {
-        (void)inflateEnd(&strm);
-        fclose(dst);
-        fclose(src);
-        return -1;
-      }
-    } while (strm.avail_out == 0);
-  } while (ret != Z_STREAM_END);
-
-  if (ret != Z_STREAM_END) {
-    fprintf(stderr, "error: incomplete or corrupt gzip stream\n");
-    (void)inflateEnd(&strm);
-    fclose(dst);
-    fclose(src);
-    return -1;
   }
 
-  /* Clean up */
-  (void)inflateEnd(&strm);
-  fclose(dst);
-  fclose(src);
+  strm.next_in  = c->input;
+  strm.avail_in = (uInt)c->input_len;
+
+  /* Z_SYNC_FLUSH for non-final chunks, Z_FINISH for the last chunk */
+  flush_mode = c->is_last ? Z_FINISH : Z_SYNC_FLUSH;
+
+  out_ptr = c->output;
+  out_rem = c->output_cap;
+
+  do {
+    /* Check available space in chunk */
+    avail = (uInt)(out_rem < (size_t)ZCHUNK ? out_rem : ZCHUNK);
+    strm.next_out  = out_ptr;
+    strm.avail_out = avail;
+
+    ret = deflate(&strm, flush_mode);
+    if (ret == Z_STREAM_ERROR) {
+      fprintf(stderr, "compress_worker: deflate error\n");
+      deflateEnd(&strm);
+      c->result = -1;
+      return NULL;
+    }
+
+    /* Update variables for next loop */
+    produced = avail - strm.avail_out;
+    out_ptr += produced;
+    out_rem -= produced;
+    c->output_len += produced;
+
+  } while (strm.avail_in > 0 || strm.avail_out == 0);
+
+  /* verify the stream completed cleanly in last chunk */
+  if (c->is_last && ret != Z_STREAM_END) {
+    fprintf(stderr, "compress_worker: stream did not finish cleanly\n");
+    deflateEnd(&strm);
+    c->result = -1;
+    return NULL;
+  }
+
+  deflateEnd(&strm);
+  return NULL;
+}
+ 
+/* ----------------------------------------------------------------------------
+ * free_chunks
+ * ------------------------------------------------------------------------- */
+static void free_chunks(CompressChunk *chunks, int count) {
+  /* Local variables */
+  int i = 0;
+
+  /* Code */
+  for (i = 0; i < count; i++) {
+    free(chunks[i].input);
+    free(chunks[i].output);
+  }
+  free(chunks);
+}
+ 
+/* ----------------------------------------------------------------------------
+ *  read_chunks
+ *
+ *  Read the entire source file into a CompressChunk array.
+ *  Returns chunk count on success, -1 on error.
+ * ------------------------------------------------------------------------- */
+static int read_chunks(FILE *src, CompressChunk **out){
+  /* Local variables */
+  CompressChunk *chunks = NULL;
+  CompressChunk *tmp = NULL;
+  CompressChunk *c = NULL;
+  int count = 0;
+  int capacity = 0;
+  int new_cap = 0;
+  int i = 0;
+  size_t dict_start = 0;
+
+  /* Code */
+  while (!feof(src)) {
+    /* reallocate memory if needed */
+    if (count == capacity) {
+      new_cap = capacity == 0 ? 16 : capacity * 2;
+      tmp = realloc(chunks, new_cap * sizeof(CompressChunk));
+      if (tmp == NULL) {
+        perror("realloc chunks");
+        goto fail;
+      }
+      chunks = tmp;
+      capacity = new_cap;
+    }
+
+    c = &chunks[count];
+    memset(c, 0, sizeof(*c));
+
+    c->input = malloc(COMPRESS_CHUNK);
+    if (c->input == NULL) {
+      perror("malloc input");
+      goto fail;
+    }
+
+    c->input_len = fread(c->input, 1, COMPRESS_CHUNK, src);
+    if (c->input_len == 0) {
+      free(c->input);
+      c->input = NULL;
+      break;   /* clean EOF */
+    }
+    if (ferror(src)) {
+      fprintf(stderr, "error: read failed on source\n");
+      free(c->input);
+      goto fail;
+    }
+
+    /* safe output buffer size via deflateBound */
+    /* use scope so tmp_strm only exists inside braces */
+    {
+      z_stream tmp_strm;
+      memset(&tmp_strm, 0, sizeof(tmp_strm));
+      deflateInit2(&tmp_strm, Z_DEFAULT_COMPRESSION, Z_DEFLATED,
+        -15, 8, Z_DEFAULT_STRATEGY);
+      c->output_cap = deflateBound(&tmp_strm, (uLong)c->input_len);
+      deflateEnd(&tmp_strm);
+    }
+    c->output = malloc(c->output_cap);
+    if (c->output == NULL) {
+      perror("malloc output");
+      free(c->input);
+      goto fail;
+    }
+
+    c->dict = NULL;
+    c->dict_len = 0;
+    c->is_last = 0; /* updated after all chunks are read */
+    count++;
+  }
+
+  /* second pass: assign dict pointers and mark last chunk */
+  for(i = 1; i < count; i++){
+    dict_start = chunks[i-1].input_len > DICT_SIZE
+                ? chunks[i-1].input_len - DICT_SIZE : 0;
+    chunks[i].dict = chunks[i-1].input + dict_start;
+    chunks[i].dict_len = chunks[i-1].input_len - dict_start;
+  }
+
+  if (count > 0)
+    chunks[count - 1].is_last = 1; /* mark the last chunk */
+
+  *out = chunks;
+  return count;
+
+fail:
+  free_chunks(chunks, count);
+  return -1;
+}
+ 
+/* ----------------------------------------------------------------------------
+ * write_gzip_header
+ *
+ * Minimal 10-byte gzip header (RFC 1952).
+ * ------------------------------------------------------------------------- */
+static int write_gzip_header(FILE *dst) {
+  /* Local variables */
+  uint8_t hdr[10] = {
+    0x1f, 0x8b,             /* gzip magic */
+    0x08,                   /* compression method: deflate */
+    0x00,                   /* flags: none */
+    0x00, 0x00, 0x00, 0x00, /* mtime: 0 */
+    0x00,                   /* extra flags: none */
+    0xff                    /* OS: TODO: Put one depending on OS */
+  };
+
+  /* Code */
+  if (fwrite(hdr, 1, sizeof(hdr), dst) != sizeof(hdr)) {
+    fprintf(stderr, "error: failed to write gzip header\n");
+    return -1;
+  }
+  return 0;
+}
+ 
+/* ----------------------------------------------------------------------------
+ * write_gzip_footer
+ *
+ * 8-byte gzip footer: CRC32 then uncompressed size, little-endian.
+ * ------------------------------------------------------------------------- */
+static int write_gzip_footer(FILE *dst, uint32_t crc, uint32_t total_size) {
+  /* Local variables */
+  uint8_t footer[8];
+  int i;
+
+  /* Code */
+  for (i = 0; i < 4; ++i){
+    /* Write CRC in first 4 indices */
+    footer[i] = (crc >> (i*8)) & 0xff;
+
+    /* Write uncompressed size in last 4 indices */
+    footer[i+4] = (total_size >> (i*8)) & 0xff;
+  }
+
+  if (fwrite(footer, 1, sizeof(footer), dst) != sizeof(footer)) {
+    fprintf(stderr, "error: failed to write gzip footer\n");
+    return -1;
+  }
   return 0;
 }
 
@@ -149,9 +297,7 @@ int compress_arch(const char *dst_path, const char *src_path, int verbose){
   setvbuf(src, NULL, _IOFBF, SAR_ARCHIVE_BUF_SIZE);
 
   /* Initialize the zlib stream for compression */
-  strm.zalloc = Z_NULL;
-  strm.zfree = Z_NULL;
-  strm.opaque = Z_NULL;
+  memset(&strm, 0, sizeof(strm));
   ret = deflateInit2(&strm,
                      Z_DEFAULT_COMPRESSION,
                      Z_DEFLATED,
@@ -215,276 +361,6 @@ int compress_arch(const char *dst_path, const char *src_path, int verbose){
 
   return 0;
 }
-
-/* ----------------------------------------------------------------------------
- * compress_worker
- *
- * Each thread compresses one chunk as a raw deflate block
- * (windowBits = -15, no per-chunk gzip envelope).
- *
- * The dictionary is loaded for compression context only. Because
- * we flush with Z_SYNC_FLUSH, all back-references are resolved
- * within the current chunk window before the block boundary
- * the decompressor never needs to know about the dictionary.
- *
- * The last chunk uses Z_FINISH to close the deflate stream.
- * ------------------------------------------------------------------------- */
-static void *compress_worker(void *arg){
-  /* Local variables */
-  CompressChunk *c = (CompressChunk *)arg;
-  z_stream      strm;
-  int           ret, flush_mode;
-  uint8_t      *out_ptr = NULL;
-  size_t        out_rem, produced ;
-  uInt          avail;
-
-  /* Code */
-  c->result     = 0;
-  c->output_len = 0;
-
-  strm.zalloc = Z_NULL;
-  strm.zfree  = Z_NULL;
-  strm.opaque = Z_NULL;
-
-  /* windowBits = -15: raw deflate, no zlib/gzip header per chunk   */
-  ret = deflateInit2(&strm,
-                    Z_DEFAULT_COMPRESSION,
-                    Z_DEFLATED,
-                    -15,
-                    8,
-                    Z_DEFAULT_STRATEGY);
-  if (ret != Z_OK) {
-    fprintf(stderr, "compress_worker: deflateInit2 failed (%d)\n", ret);
-    c->result = -1;
-    return NULL;
-  }
-
-  /* seed the dictionary with the tail of the previous chunk's raw
-   * data. This gives the compressor back-reference context across
-   * the chunk boundary without encoding any cross-block references
-   * in the bitstream, Z_SYNC_FLUSH ensures they stay local. */
-  if (c->dict != NULL && c->dict_len > 0) {
-    ret = deflateSetDictionary(&strm, c->dict, (uInt)c->dict_len);
-    if (ret != Z_OK) {
-      fprintf(stderr, "compress_worker: deflateSetDictionary failed (%d)\n", ret);
-      deflateEnd(&strm);
-      c->result = -1;
-      return NULL;
-    }
-  }
-
-  /* feed all input in one shot, then flush */
-  strm.next_in  = c->input;
-  strm.avail_in = (uInt)c->input_len;
-
-  /* choose flush mode:
-   * Z_SYNC_FLUSH byte-aligns output, resolves all pending
-   *                back-references within this chunk's window.
-   * Z_FINISH     on the last chunk, closes the deflate stream. */
-  flush_mode = c->is_last ? Z_FINISH : Z_SYNC_FLUSH;
-
-  out_ptr = c->output;
-  out_rem = c->output_cap;
-
-  do {
-    avail = (uInt)(out_rem < (size_t)ZCHUNK ? out_rem : ZCHUNK);
-    strm.next_out  = out_ptr;
-    strm.avail_out = avail;
-
-    ret = deflate(&strm, flush_mode);
-    if (ret == Z_STREAM_ERROR) {
-      fprintf(stderr, "compress_worker: deflate error\n");
-      deflateEnd(&strm);
-      c->result = -1;
-      return NULL;
-    }
-
-    produced = avail - strm.avail_out;
-    out_ptr += produced;
-    out_rem -= produced;
-    c->output_len += produced;
-
-  } while (strm.avail_in > 0 || strm.avail_out == 0);
-
-  /* for the last chunk, verify the stream completed cleanly         */
-  if (c->is_last && ret != Z_STREAM_END) {
-    fprintf(stderr, "compress_worker: stream did not finish cleanly\n");
-    deflateEnd(&strm);
-    c->result = -1;
-    return NULL;
-  }
-
-  deflateEnd(&strm);
-  return NULL;
-}
- 
-/* ----------------------------------------------------------------------------
- *  read_chunks
- *
- *  Read the entire source file into a CompressChunk array.
- *  dict pointers point into the previous chunk's input buffer
- *  do not free chunks until all threads have finished.
- *  Returns chunk count on success, -1 on error.
- * ------------------------------------------------------------------------- */
-static int read_chunks(FILE *src, CompressChunk **out){
-  /* Local variables */
-  CompressChunk *chunks     = NULL;
-  CompressChunk *tmp        = NULL;
-  CompressChunk *c          = NULL;
-  int            count      = 0;
-  int            capacity   = 0;
-  int            new_cap    = 0;
-  int            i          = 0;
-  size_t         dict_start = 0;
-  z_stream       tmp_strm;
-
-  /* Code */
-  while (!feof(src)) {
-    /* grow array if needed */
-    if (count == capacity) {
-      new_cap = capacity == 0 ? 16 : capacity * 2;
-      tmp = realloc(chunks,
-        new_cap * sizeof(CompressChunk));
-      if (tmp == NULL) {
-        perror("realloc chunks");
-        goto fail;
-      }
-      chunks = tmp;
-      capacity = new_cap;
-    }
-
-    c = &chunks[count];
-    memset(c, 0, sizeof(*c));
-
-    c->input = malloc(COMPRESS_CHUNK);
-    if (c->input == NULL) {
-      perror("malloc input");
-      goto fail;
-    }
-
-    c->input_len = fread(c->input, 1, COMPRESS_CHUNK, src);
-    if (c->input_len == 0) {
-      free(c->input);
-      c->input = NULL;
-      break;   /* clean EOF */
-    }
-    if (ferror(src)) {
-      fprintf(stderr, "error: read failed on source\n");
-      free(c->input);
-      goto fail;
-    }
-
-    /* safe output buffer size via deflateBound */
-    {
-      tmp_strm.zalloc = Z_NULL;
-      tmp_strm.zfree  = Z_NULL;
-      tmp_strm.opaque = Z_NULL;
-      deflateInit2(&tmp_strm, Z_DEFAULT_COMPRESSION, Z_DEFLATED,
-        -15, 8, Z_DEFAULT_STRATEGY);
-      c->output_cap = deflateBound(&tmp_strm, (uLong)c->input_len);
-      deflateEnd(&tmp_strm);
-    }
-    c->output = malloc(c->output_cap);
-    if (c->output == NULL) {
-      perror("malloc output");
-      free(c->input);
-      goto fail;
-    }
-
-    c->dict = NULL;
-    c->dict_len = 0;
-    c->is_last = 0; /* updated after all chunks are read */
-    count++;
-  }
-
-  /* second pass: assign dict pointers and mark last chunk */
-  for(i = 1; i < count; i++){
-    dict_start = chunks[i-1].input_len > DICT_SIZE
-                ? chunks[i-1].input_len - DICT_SIZE : 0;
-    chunks[i].dict = chunks[i-1].input + dict_start;
-    chunks[i].dict_len = chunks[i-1].input_len - dict_start;
-  }
-
-  if (count > 0)
-    chunks[count - 1].is_last = 1; /* mark the last chunk */
-
-  *out = chunks;
-  return count;
-
-fail:
-  for (int i = 0; i < count; i++) {
-    free(chunks[i].input);
-    free(chunks[i].output);
-  }
-  free(chunks);
-  return -1;
-}
- 
-/* ----------------------------------------------------------------------------
- * free_chunks
- * ------------------------------------------------------------------------- */
-static void free_chunks(CompressChunk *chunks, int count) {
-  /* Local variables */
-  int i = 0;
-
-  /* Code */
-  for (i = 0; i < count; i++) {
-    free(chunks[i].input);
-    free(chunks[i].output);
-  }
-  free(chunks);
-}
- 
-/* ----------------------------------------------------------------------------
- * write_gzip_header
- *
- * Minimal 10-byte gzip header (RFC 1952).
- * ------------------------------------------------------------------------- */
-static int write_gzip_header(FILE *dst) {
-  /* Local variables */
-  uint8_t hdr[10] = {
-    0x1f, 0x8b,             /* gzip magic                         */
-    0x08,                   /* compression method: deflate        */
-    0x00,                   /* flags: none                        */
-    0x00, 0x00, 0x00, 0x00, /* mtime: 0                           */
-    0x00,                   /* extra flags: none                  */
-    0xff                    /* OS: unknown                        */
-  };
-
-  /* Code */
-  if (fwrite(hdr, 1, sizeof(hdr), dst) != sizeof(hdr)) {
-    fprintf(stderr, "error: failed to write gzip header\n");
-    return -1;
-  }
-  return 0;
-}
- 
-/* ----------------------------------------------------------------------------
- * write_gzip_footer
- *
- * 8-byte gzip footer: CRC32 then uncompressed size, little-endian.
- * ------------------------------------------------------------------------- */
-static int write_gzip_footer(FILE *dst, uint32_t crc, uint32_t total_size) {
-  /* Local variables */
-  uint8_t footer[8];
-
-  /* Code */
-  footer[0] = (crc       ) & 0xff;
-  footer[1] = (crc >>  8 ) & 0xff;
-  footer[2] = (crc >> 16 ) & 0xff;
-  footer[3] = (crc >> 24 ) & 0xff;
-
-  footer[4] = (total_size      ) & 0xff;
-  footer[5] = (total_size >>  8) & 0xff;
-  footer[6] = (total_size >> 16) & 0xff;
-  footer[7] = (total_size >> 24) & 0xff;
-
-  if (fwrite(footer, 1, sizeof(footer), dst) != sizeof(footer)) {
-    fprintf(stderr, "error: failed to write gzip footer\n");
-    return -1;
-  }
-  return 0;
-}
  
 /* ----------------------------------------------------------------------------
  * compress_arch_threads
@@ -507,19 +383,19 @@ static int write_gzip_footer(FILE *dst, uint32_t crc, uint32_t total_size) {
  * ------------------------------------------------------------------------- */
 int compress_arch_threads(const char *dst_path, const char *src_path, int verbose){
   /* Local variables */
-  FILE          *src      = NULL;
-  FILE          *dst      = NULL;
-  CompressChunk *chunks   = NULL;
-  CompressChunk *c        = NULL;
-  int            n_chunks = 0;
-  int            result   = 0;
-  int            base     = 0;
-  int            batch    = 0;
-  int            i        = 0;
-  int            t        = 0;
-  int            err      = 0;
+  FILE *src = NULL;
+  FILE *dst = NULL;
+  CompressChunk *chunks = NULL;
+  CompressChunk *c = NULL;
+  int n_chunks = 0;
+  int result = 0;
+  int base = 0;
+  int batch = 0;
+  int i = 0;
+  int t = 0;
+  int err = 0;
+  uint32_t crc = 0, total_size = 0;
   pthread_t      threads[SAR_COMPRESS_THREADS];
-  uint32_t       crc, total_size;
  
   /* Code */
   if (verbose)
@@ -542,7 +418,7 @@ int compress_arch_threads(const char *dst_path, const char *src_path, int verbos
   }
   setvbuf(dst, NULL, _IOFBF, SAR_ARCHIVE_BUF_SIZE);
 
-  /* phase 1: read all chunks */
+  /* read all chunks */
   n_chunks = read_chunks(src, &chunks);
   fclose(src);
   src = NULL;
@@ -561,22 +437,14 @@ int compress_arch_threads(const char *dst_path, const char *src_path, int verbos
   if (verbose)
     printf("compress: %d chunk(s) to process\n", n_chunks);
 
-  /* phase 2: write single gzip header */
+  /*  write gzip header */
 
   if (write_gzip_header(dst) != 0) {
     result = -1;
     goto cleanup;
   }
 
-  /* phase 3: compress in batches of SAR_COMPRESS_THREADS
-   *
-   * Within a batch threads run fully in parallel.
-   * We must NOT start batch N+1 until batch N is complete because
-   * each chunk's dict pointer references the previous chunk's
-   * input buffer, which must stay alive and unmodified.
-   * Since we never free buffers until all batches are done, this
-   * is already safe. Batching just bounds peak thread count. */
-
+  /* compress in batches of SAR_COMPRESS_THREADS */
   for (base = 0; base < n_chunks; base += SAR_COMPRESS_THREADS) {
     batch = n_chunks - base;
     if (batch > SAR_COMPRESS_THREADS) batch = SAR_COMPRESS_THREADS;
@@ -620,19 +488,14 @@ int compress_arch_threads(const char *dst_path, const char *src_path, int verbos
     if (verbose)
       printf("\n");
 
-  /* phase 4: CRC32 + total size over all raw input
-   * Computed on main thread after all batches, iterating input
-   * buffers in order. CRC must cover original bytes sequentially. */
-
-  crc        = crc32(0L, Z_NULL, 0);
+  /* Write gzip footer */
+  crc = crc32(0L, Z_NULL, 0);
   total_size = 0;
 
   for (i = 0; i < n_chunks; i++) {
-      crc = crc32(crc, chunks[i].input, (uInt)chunks[i].input_len);
-      total_size += (uint32_t)chunks[i].input_len;
+    crc = crc32(crc, chunks[i].input, (uInt)chunks[i].input_len);
+    total_size += (uint32_t)chunks[i].input_len;
   }
-
-  /* --- phase 5: write single gzip footer ------------------------ */
 
   if (write_gzip_footer(dst, crc, total_size) != 0)
     result = -1;
@@ -644,4 +507,100 @@ cleanup:
   free_chunks(chunks, n_chunks);
   fclose(dst);
   return result;
+}
+
+/* ----------------------------------------------------------------------------
+ * decompress_arch
+ *
+ * Decompress to 'dst' from 'src'
+ * Returns 0 on success, -1 on error.
+ * ------------------------------------------------------------------------- */
+int decompress_arch(const char *dst_path, const char *src_path, int verbose){
+  /* Local variables */
+  int ret;
+  unsigned have;
+  z_stream strm;
+  unsigned char in[ZCHUNK];
+  unsigned char out[ZCHUNK];
+  FILE *dst;
+  FILE *src;
+
+  /* Code */
+  if (verbose)
+    printf("decompressing from '%s'\n", 
+      src_path);
+
+  dst = fopen(dst_path, "wb");
+  if(dst == NULL){
+    fprintf(stderr, "error: could not open '%s'\n", dst_path);
+    return -1;
+  }
+  setvbuf(dst, NULL, _IOFBF, SAR_ARCHIVE_BUF_SIZE);
+
+  src = fopen(src_path, "rb");
+  if(src == NULL){
+    fprintf(stderr, "error: could not open '%s'\n", dst_path);
+    fclose(dst);
+    return -1;
+  }
+  setvbuf(src, NULL, _IOFBF, SAR_ARCHIVE_BUF_SIZE);
+
+  /* Initialize the zlib stream for decompression */
+  memset(&strm, 0, sizeof(strm));
+  ret = inflateInit2(&strm, 15 + 16);
+  if (ret != Z_OK) {
+    fclose(dst);
+    fclose(src);
+    return -1;
+  }
+
+  /* Decompress until EOF */
+  do{
+    strm.avail_in = fread(in, 1, ZCHUNK, src);
+    if(ferror(src)){
+      (void)inflateEnd(&strm);
+      fclose(dst);
+      fclose(src);
+      return -1;
+    }
+    if(strm.avail_in == 0) break;
+    strm.next_in = in;
+
+    do{
+      strm.avail_out = ZCHUNK;
+      strm.next_out  = out;
+      ret = inflate(&strm, Z_NO_FLUSH);
+      if (ret == Z_STREAM_ERROR  ||
+          ret == Z_NEED_DICT     ||
+          ret == Z_DATA_ERROR    ||
+          ret == Z_MEM_ERROR) {
+        fprintf(stderr, "error: failure during decompression (%d)\n", ret);
+        (void)inflateEnd(&strm);
+        fclose(dst);
+        fclose(src);
+        return -1;
+      }
+      have = ZCHUNK - strm.avail_out;
+      if (fwrite(out, 1, have, dst) != have || ferror(dst)) {
+        (void)inflateEnd(&strm);
+        fclose(dst);
+        fclose(src);
+        return -1;
+      }
+    } while (strm.avail_out == 0);
+  } while (ret != Z_STREAM_END);
+
+  if (ret != Z_STREAM_END) {
+    fprintf(stderr, "error: incomplete or corrupt gzip stream\n");
+    (void)inflateEnd(&strm);
+    fclose(dst);
+    fclose(src);
+    return -1;
+  }
+
+  /* Clean up */
+  (void)inflateEnd(&strm);
+  fclose(dst);
+  fclose(src);
+  return 0;
 }
