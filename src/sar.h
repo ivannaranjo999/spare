@@ -29,6 +29,7 @@
 #define COMPRESS_CHUNK (128 * 1024) /* 128 KB input per chunk */
 #define DICT_SIZE (32  * 1024) /* 32  KB dictionary */
 
+/* File header struct for SAR archives */
 typedef struct {
   char     magic[3];
   uint8_t  version;
@@ -40,6 +41,27 @@ typedef struct {
 
 } FileHeader;
 
+/* Struct for parallel compression */
+typedef struct {
+  uint8_t *input;    /* raw chunk data to compress */
+  size_t input_len;  /* bytes in this chunk */
+  uint8_t *dict;     /* last DICT_SIZE bytes of prev chunk raw */
+  size_t dict_len;   /* 0 for first chunk */
+  uint8_t *output;   /* compressed raw deflate output */
+  size_t output_cap; /* allocated size of output buffer */
+  size_t output_len; /* bytes written by thread */
+  int is_last;       /* 1 if this is the final chunk */
+  int result;        /* 0 = ok, -1 = error */
+} CompressChunk;
+
+/* Struct for decompression without using disk */
+typedef struct{
+  int src_fd;   /* File descriptor for compressed file */
+  int write_fd; /* File descriptor for pipe write end */
+  int verbose;  /* Verbose flag */
+  int result;   /* Result value */
+} DecompressRamArgs;
+
 typedef enum {
   ARCHIVE_DOESNOTEXIST,
   ARCHIVE_UNKNOWN,
@@ -47,16 +69,27 @@ typedef enum {
   ARCHIVE_SGZ
 } ArchiveFormat;
 
+typedef enum {
+  DONOTFLUSH,
+  DOFLUSH
+} FlushNeeded;
+
+/* Functions used somewhere else */
 int pack(const char *archive_path, const char **filepaths, int count, int verbose);
 int pack_file(FILE *archive, const char *filepath, int verbose);
 int pack_threads(const char *archive_path, const char **filepaths, int count, int verbose);
-int unpack(const char *archive_path, int verbose);
+int unpack(FILE *archive_path, int verbose);
 int unpack_file(FILE *archive, int verbose);
 int compress_arch(const char *dst_path, const char *src_path, int verbose);
 int compress_arch_threads(const char *dst_path, const char *src_path, int verbose);
 int decompress_arch(const char *dst_path, const char *src_path, int verbose);
-int list(const char *archive_path);
-int grab(const char *archive_path, const char **filepaths, int count, int verbose);
+int decompress_arch_ram(FILE **dst_fp, const char *src_path, 
+                        pthread_t *dst_thread, DecompressRamArgs *dst_args, 
+                        int verbose);
+int list(FILE *archive);
+int grab(FILE *archive, const char **filepaths, int count, int verbose);
 int insert(const char *archive_path, const char **filepaths, int count, int verbose);
+int decompress_arch_ram_join(pthread_t thread, DecompressRamArgs *arg);
+
 
 #endif

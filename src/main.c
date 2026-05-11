@@ -1,5 +1,37 @@
 #include "sar.h"
 
+/* ----------------------------------------------------------------------------
+ * Function helpers
+ * ------------------------------------------------------------------------- */
+/* Pointer to function of any action with the FILE* of the uncompressed file 
+ * and unknown arguments */
+typedef int (*ActionFn)(FILE *fp, void *user_data);
+
+/* Arguments for unpack function */
+typedef struct { int verbose; } UnpackArgs;
+static int do_unpack(FILE *fp, void *user_data){
+  UnpackArgs *a = (UnpackArgs *)user_data;
+  return unpack(fp, a->verbose);
+}
+
+/* Arguments for list function */
+static int do_list(FILE *fp, void *user_data){
+  (void)user_data;
+  return list(fp);
+}
+
+/* Arguments for grab function */
+typedef struct { const char **filepaths; int nfiles; int verbose; } GrabArgs;
+static int do_grab(FILE *fp, void *user_data){
+  GrabArgs *a = (GrabArgs *)user_data;
+  return grab(fp, a->filepaths, a->nfiles, a->verbose);
+}
+
+/* ----------------------------------------------------------------------------
+ * detect_archive_format
+ * 
+ * Returns format of the given SAR archive. Can be SGZ or SAR.
+ * ------------------------------------------------------------------------- */
 ArchiveFormat detect_archive_format(const char *archive_path){
   /* Local variables */
   unsigned char magic[3];
@@ -26,6 +58,68 @@ ArchiveFormat detect_archive_format(const char *archive_path){
 
 }
 
+/* ----------------------------------------------------------------------------
+ * decompress_and_run
+ * 
+ * Generic action function call with previous decompression step
+ * ------------------------------------------------------------------------- */
+static int decompress_and_run(const char *archive_path, int verbose,
+                        ActionFn action_fn, void *user_data) {
+  /* Local variables */
+  FILE *fp = NULL;
+  pthread_t tid;
+  DecompressRamArgs args;
+  int ret;
+ 
+  /* Code */
+  if (decompress_arch_ram(&fp, archive_path, &tid, &args, verbose) != 0) {
+    fprintf(stderr, "error: decompress failed\n");
+    return -1;
+  }
+ 
+  ret = action_fn(fp, user_data);
+ 
+  /* MUST fclose before join — unblocks the decompression thread */
+  fclose(fp);
+ 
+  if (decompress_arch_ram_join(tid, &args) != 0) {
+    fprintf(stderr, "error: decompression thread failed\n");
+    return -1;
+  }
+ 
+  return ret;
+}
+
+/* ----------------------------------------------------------------------------
+ * just_run
+ * 
+ * Generic action function call with NO previous decompression step
+ * ------------------------------------------------------------------------- */
+static int just_run(const char *archive_path,
+                           ActionFn action_fn, void *user_data) {
+  /* Local variables */
+  FILE *fp  = NULL;
+  int ret;
+ 
+  /* Code */
+  fp = fopen(archive_path, "rb");
+  if (fp == NULL) {
+    perror(archive_path);
+    return -1;
+  }
+  setvbuf(fp, NULL, _IOFBF, SAR_ARCHIVE_BUF_SIZE);
+ 
+  ret = action_fn(fp, user_data);
+ 
+  fclose(fp);
+  return ret;
+}
+
+/* ----------------------------------------------------------------------------
+ * usage
+ * 
+ * Help information
+ * ------------------------------------------------------------------------- */
 static void usage(const char *name){
   fprintf(stderr, "Usage:\n");
   fprintf(stderr, "Actions:\n");
@@ -36,12 +130,18 @@ static void usage(const char *name){
   fprintf(stderr, "  %s g   <archive.sar|.sgz> <file1..fileN>  Grab specific files contained in a SAR archive.\n", name);
   fprintf(stderr, "  %s i   <archive.sar|.sgz> <file1..fileN>  Insert specific files to a SAR archive.\n", name);
   fprintf(stderr, "Flags:\n");
+  fprintf(stderr, "  -h prints this information.\n");
   fprintf(stderr, "  -v verbose output.\n");
   fprintf(stderr, "  -p enable threading for packing.\n");
   fprintf(stderr, "  -c enable threading for compression.\n");
   fprintf(stderr, "  -T p and c flags.\n");
 }
 
+/* ----------------------------------------------------------------------------
+ * main
+ * 
+ * SAR tool entry point.
+ * ------------------------------------------------------------------------- */
 int main(int argc, char *argv[]){
   /* Local variables */
   const char *action = NULL;
@@ -56,16 +156,14 @@ int main(int argc, char *argv[]){
   ArchiveFormat archive_format = ARCHIVE_DOESNOTEXIST;
 
   /* Code */
-  if (argc < 3) {
-    usage(argv[0]);
-    return 1;
-  }
-
   /* Consume flags */
   for (i = 1; i < argc; ++i){
     if(strcmp(argv[i], "-v") == 0){
       verbose = 1;
       argv[i] = NULL;
+    } else if(strcmp(argv[i], "-h") == 0){
+      usage(argv[0]);
+      return 0;
     } else if(strcmp(argv[i], "-p") == 0){
       threads_pack = 1;
       argv[i] = NULL;
@@ -77,6 +175,12 @@ int main(int argc, char *argv[]){
       threads_compress = 1;
       argv[i] = NULL;
     }
+  }
+
+  /* Check if min amount of argc is present */
+  if (argc < 3) {
+    usage(argv[0]);
+    return 1;
   }
 
   /* Collect positional args */
@@ -151,20 +255,11 @@ int main(int argc, char *argv[]){
 
   /* Action - u */
   } else if (strcmp(action, "u") == 0){
+    UnpackArgs a = { verbose };
     if (archive_format == ARCHIVE_SAR) {
-      return unpack(archive_path, verbose) == 0 ? 0 : 1;
+      return just_run(archive_path, do_unpack, &a) == 0 ? 0 : 1;
     } else if (archive_format == ARCHIVE_SGZ) {
-      if(decompress_arch(tmpFile, archive_path, verbose) != 0){
-        fprintf(stderr, "error: decompress failed\n");
-        return 1;
-      }
-
-      if(unpack(tmpFile, verbose) != 0){
-        fprintf(stderr, "error: unpack failed\n");
-        return 1;
-      }
-
-      return remove(tmpFile) == 0 ? 0 : 1;
+      return decompress_and_run(archive_path, verbose, do_unpack, &a) == 0 ? 0 : 1;
     } else {
       fprintf(stderr, "error: non existing file or corrupt format for '%s'\n",
         archive_path);
@@ -174,19 +269,9 @@ int main(int argc, char *argv[]){
   /* Action - l */
   } else if (strcmp(action, "l") == 0){
     if (archive_format == ARCHIVE_SAR) {
-      return list(archive_path);
+      return just_run(archive_path, do_list, NULL) == 0 ? 0 : 1;
     } else if (archive_format == ARCHIVE_SGZ) {
-      if(decompress_arch(tmpFile, archive_path, verbose) != 0){
-        fprintf(stderr, "error: decompress failed\n");
-        return 1;
-      }
-
-      if(list(tmpFile)){
-        fprintf(stderr, "error: list failed\n");
-        return 1;
-      }
-
-      return remove(tmpFile) == 0 ? 0 : 1;
+      return decompress_and_run(archive_path, verbose, do_list, NULL) == 0 ? 0 : 1;
     } else {
       fprintf(stderr, "error: non existing file or corrupt format for '%s'\n",
         archive_path);
@@ -195,20 +280,11 @@ int main(int argc, char *argv[]){
 
   /* Action - g */
   } else if (strcmp(action, "g") == 0){
+    GrabArgs a = { filepaths, nfiles, verbose };
     if (archive_format == ARCHIVE_SAR) {
-      return grab(archive_path, filepaths, nfiles, verbose) == 0 ? 0 : 1;
+      return just_run(archive_path, do_grab, &a) == 0 ? 0 : 1;
     } else if (archive_format == ARCHIVE_SGZ) {
-      if(decompress_arch(tmpFile, archive_path, verbose) != 0){
-        fprintf(stderr, "error: decompress failed\n");
-        return 1;
-      }
-
-      if(grab(tmpFile, filepaths, nfiles, verbose)){
-        fprintf(stderr, "error: grab failed\n");
-        return 1;
-      }
-
-      return remove(tmpFile) == 0 ? 0 : 1;
+      return decompress_and_run(archive_path, verbose, do_grab, &a) == 0 ? 0 : 1;
     } else {
       fprintf(stderr, "error: non existing file or corrupt format for '%s'\n",
         archive_path);
@@ -226,6 +302,7 @@ int main(int argc, char *argv[]){
 
       return pack(archive_path, filepaths, nfiles, verbose) == 0 ? 0 : 1;
     } else if (archive_format == ARCHIVE_SGZ) {
+      /* RAM cannot be used here as we do compress the file afterwards */
       if(decompress_arch(tmpFile, archive_path, verbose) != 0){
         fprintf(stderr, "error: decompress failed\n");
         return 1;

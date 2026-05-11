@@ -23,9 +23,8 @@ static int filename_matches(const char *archived_name, const char **filepaths, i
  * Extract given files from the archive at 'archive_path'.
  * Returns 0 on success, -1 if any file failed.
  * ------------------------------------------------------------------------- */
-int grab(const char *archive_path, const char **filepaths, int count, int verbose){
+int grab(FILE *archive, const char **filepaths, int count, int verbose){
   /* Local variables */
-  FILE      *archive;
   int        result = 0;
   int        status = 0;
   int        exitLoop = 0;
@@ -34,13 +33,6 @@ int grab(const char *archive_path, const char **filepaths, int count, int verbos
   FileHeader header;
 
   /* Code */
-  archive = fopen(archive_path, "rb");
-  if(archive == NULL){
-    perror(archive_path);
-    return -1;
-  }
-  setvbuf(archive, NULL, _IOFBF, SAR_ARCHIVE_BUF_SIZE);
-
   /* Read first block */
   n = fread(&header, sizeof(header), 1, archive);
 
@@ -93,6 +85,5 @@ int grab(const char *archive_path, const char **filepaths, int count, int verbos
     }
   }
 
-  fclose(archive);
   return result;
 }

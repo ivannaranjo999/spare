@@ -43,26 +43,17 @@ static int get_filename(FILE *archive){
  * Shows all filenames inside a .sar file
  * Returns 0 on success, -1 on error.
  * ------------------------------------------------------------------------- */
-int list(const char *archive_path){
+int list(FILE *archive){
   /* Local variables */
-  FILE *archive;
   int   result = 0;
   int   status;
 
   /* Code */
-  archive = fopen(archive_path, "rb");
-  if(archive == NULL){
-    perror(archive_path);
-    return -1;
-  }
-  setvbuf(archive, NULL, _IOFBF, SAR_ARCHIVE_BUF_SIZE);
-
   while((status = get_filename(archive)) == 1){
     /* Keep going until EOF or error */
   }
 
   if(status == -1) result = -1;
 
-  fclose(archive);
   return result;
 }

@@ -1,18 +1,5 @@
 #include "sar.h"
 
-/* Struct for parallel compression */
-typedef struct {
-  uint8_t *input;    /* raw chunk data to compress */
-  size_t input_len;  /* bytes in this chunk */
-  uint8_t *dict;     /* last DICT_SIZE bytes of prev chunk raw */
-  size_t dict_len;   /* 0 for first chunk */
-  uint8_t *output;   /* compressed raw deflate output */
-  size_t output_cap; /* allocated size of output buffer */
-  size_t output_len; /* bytes written by thread */
-  int is_last;       /* 1 if this is the final chunk */
-  int result;        /* 0 = ok, -1 = error */
-} CompressChunk;
-
 /* ----------------------------------------------------------------------------
  * compress_worker
  *
@@ -278,7 +265,7 @@ int compress_arch(const char *dst_path, const char *src_path, int verbose){
 
   /* Code */
   if (verbose)
-    printf("compressing to '%s'\n", 
+    printf("compressing to '%s' ...\n", 
       dst_path);
 
   dst = fopen(dst_path, "wb");
@@ -399,7 +386,7 @@ int compress_arch_threads(const char *dst_path, const char *src_path, int verbos
  
   /* Code */
   if (verbose)
-    printf("compressing to '%s' (%d threads, %d KB chunks)\n",
+    printf("compressing to '%s' (%d threads, %d KB chunks) ...\n",
           dst_path, SAR_COMPRESS_THREADS, COMPRESS_CHUNK / 1024);
 
   /* open files */
@@ -507,100 +494,4 @@ cleanup:
   free_chunks(chunks, n_chunks);
   fclose(dst);
   return result;
-}
-
-/* ----------------------------------------------------------------------------
- * decompress_arch
- *
- * Decompress to 'dst' from 'src'
- * Returns 0 on success, -1 on error.
- * ------------------------------------------------------------------------- */
-int decompress_arch(const char *dst_path, const char *src_path, int verbose){
-  /* Local variables */
-  int ret;
-  unsigned have;
-  z_stream strm;
-  unsigned char in[ZCHUNK];
-  unsigned char out[ZCHUNK];
-  FILE *dst;
-  FILE *src;
-
-  /* Code */
-  if (verbose)
-    printf("decompressing from '%s'\n", 
-      src_path);
-
-  dst = fopen(dst_path, "wb");
-  if(dst == NULL){
-    fprintf(stderr, "error: could not open '%s'\n", dst_path);
-    return -1;
-  }
-  setvbuf(dst, NULL, _IOFBF, SAR_ARCHIVE_BUF_SIZE);
-
-  src = fopen(src_path, "rb");
-  if(src == NULL){
-    fprintf(stderr, "error: could not open '%s'\n", dst_path);
-    fclose(dst);
-    return -1;
-  }
-  setvbuf(src, NULL, _IOFBF, SAR_ARCHIVE_BUF_SIZE);
-
-  /* Initialize the zlib stream for decompression */
-  memset(&strm, 0, sizeof(strm));
-  ret = inflateInit2(&strm, 15 + 16);
-  if (ret != Z_OK) {
-    fclose(dst);
-    fclose(src);
-    return -1;
-  }
-
-  /* Decompress until EOF */
-  do{
-    strm.avail_in = fread(in, 1, ZCHUNK, src);
-    if(ferror(src)){
-      (void)inflateEnd(&strm);
-      fclose(dst);
-      fclose(src);
-      return -1;
-    }
-    if(strm.avail_in == 0) break;
-    strm.next_in = in;
-
-    do{
-      strm.avail_out = ZCHUNK;
-      strm.next_out  = out;
-      ret = inflate(&strm, Z_NO_FLUSH);
-      if (ret == Z_STREAM_ERROR  ||
-          ret == Z_NEED_DICT     ||
-          ret == Z_DATA_ERROR    ||
-          ret == Z_MEM_ERROR) {
-        fprintf(stderr, "error: failure during decompression (%d)\n", ret);
-        (void)inflateEnd(&strm);
-        fclose(dst);
-        fclose(src);
-        return -1;
-      }
-      have = ZCHUNK - strm.avail_out;
-      if (fwrite(out, 1, have, dst) != have || ferror(dst)) {
-        (void)inflateEnd(&strm);
-        fclose(dst);
-        fclose(src);
-        return -1;
-      }
-    } while (strm.avail_out == 0);
-  } while (ret != Z_STREAM_END);
-
-  if (ret != Z_STREAM_END) {
-    fprintf(stderr, "error: incomplete or corrupt gzip stream\n");
-    (void)inflateEnd(&strm);
-    fclose(dst);
-    fclose(src);
-    return -1;
-  }
-
-  /* Clean up */
-  (void)inflateEnd(&strm);
-  fclose(dst);
-  fclose(src);
-  return 0;
 }

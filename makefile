@@ -1,7 +1,8 @@
 CC     = gcc
 CFLAGS = -Wall -Wextra -std=c11 -g
 LIBS   = -lz -pthread
-SRC    = src/main.c src/pack.c src/unpack.c src/grab.c src/list.c src/insert.c src/compression.c
+SRC    = src/main.c src/pack.c src/unpack.c src/grab.c src/list.c src/insert.c \
+         src/compression.c src/decompression.c
 OBJ    = $(patsubst src/%.c, build/%.o, $(SRC))
 TARGET = sar
 PREFIX = /usr/local/bin

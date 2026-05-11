@@ -141,26 +141,17 @@ int unpack_file(FILE *archive, int verbose){
  * Extract all files from the archive at 'archive_path'.
  * Returns 0 on success, -1 if any file failed.
  * ------------------------------------------------------------------------- */
-int unpack(const char *archive_path, int verbose){
+int unpack(FILE *archive, int verbose){
   /* Local variables */
-  FILE *archive;
   int   result = 0;
   int   status;
 
   /* Code */
-  archive = fopen(archive_path, "rb");
-  if(archive == NULL){
-    perror(archive_path);
-    return -1;
-  }
-  setvbuf(archive, NULL, _IOFBF, SAR_ARCHIVE_BUF_SIZE);
-
   while((status = unpack_file(archive, verbose)) == 1){
     /* Keep going until EOF or error */
   }
 
   if(status == -1) result = -1;
 
-  fclose(archive);
   return result;
 }
