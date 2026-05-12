@@ -112,7 +112,7 @@ int main(int argc, char *argv[]){
       return just_run(archive_path, do_unpack, &a) == 0 ? 0 : 1;
     } else if (archive_format == ARCHIVE_SGZ) {
       decompress_in_disk_and_run(TMP_FILENAME, archive_path, "rb",
-        verbose, do_unpack, &a);
+        do_unpack, &a, verbose);
       return remove(TMP_FILENAME) == 0 ? 0 : 1;
     } else {
       fprintf(stderr, "error: non existing file or corrupt format for '%s'\n",
@@ -125,8 +125,8 @@ int main(int argc, char *argv[]){
     if (archive_format == ARCHIVE_SAR) {
       return just_run(archive_path, do_list, NULL) == 0 ? 0 : 1;
     } else if (archive_format == ARCHIVE_SGZ) {
-      decompress_in_disk_and_run(TMP_FILENAME, archive_path, "rb", verbose, 
-        do_list, NULL);
+      decompress_in_disk_and_run(TMP_FILENAME, archive_path, "rb", do_list,
+        NULL, verbose);
       return remove(TMP_FILENAME) == 0 ? 0 : 1;
     } else {
       fprintf(stderr, "error: non existing file or corrupt format for '%s'\n",
@@ -140,8 +140,8 @@ int main(int argc, char *argv[]){
     if (archive_format == ARCHIVE_SAR) {
       return just_run(archive_path, do_grab, &a) == 0 ? 0 : 1;
     } else if (archive_format == ARCHIVE_SGZ) {
-      decompress_in_disk_and_run(TMP_FILENAME, archive_path, "rb", verbose, 
-        do_grab, &a);
+      decompress_in_disk_and_run(TMP_FILENAME, archive_path, "rb", 
+        do_grab, &a, verbose);
       return remove(TMP_FILENAME) == 0 ? 0 : 1;
     } else {
       fprintf(stderr, "error: non existing file or corrupt format for '%s'\n",
@@ -161,8 +161,8 @@ int main(int argc, char *argv[]){
       return just_run(archive_path, do_pack, &a) == 0 ? 0 : 1;
     } else if (archive_format == ARCHIVE_SGZ) {
       InsertArgs a = { filepaths, nfiles, verbose };
-      decompress_in_disk_and_run(TMP_FILENAME, archive_path, "ab", verbose,
-        do_insert, &a);
+      decompress_in_disk_and_run(TMP_FILENAME, archive_path, "ab",
+        do_insert, &a, verbose);
       compress_in_disk(archive_path, TMP_FILENAME, threads_compress, verbose);
       return remove(TMP_FILENAME) == 0 ? 0 : 1;
     } else {

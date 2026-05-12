@@ -110,7 +110,7 @@ int decompress_in_ram_and_run(const char *src_path,
  * Generic action function call with previous decompression step
  * ------------------------------------------------------------------------- */
 int decompress_in_disk_and_run(const char *dst_path, const char *src_path,
-    const char *mode, int verbose, ActionFn action_fn, void *user_data) {
+    const char *mode, ActionFn action_fn, void *user_data, int verbose) {
   /* Local variables */
   FILE *fp = NULL;
   int ret;
@@ -142,8 +142,8 @@ int decompress_in_disk_and_run(const char *dst_path, const char *src_path,
  * Calls compress_arch or compress_arch_threads
  * Returns 0 on success, -1 on error.
  * ------------------------------------------------------------------------- */
-int compress_in_disk(const char *dst_path, const char *src_path, int verbose, 
-             int use_threads){
+int compress_in_disk(const char *dst_path, const char *src_path, 
+            int use_threads, int verbose){
   if (use_threads == 0){
     if (compress_arch(dst_path, src_path, verbose) != 0) {
       fprintf(stderr, "error: compress_arch failed\n");
