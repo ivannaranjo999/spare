@@ -90,6 +90,8 @@ int decompress_in_ram_and_run(const char *src_path, ActionFn action_fn,
     fprintf(stderr, "error: decompress failed\n");
     return -1;
   }
+
+  setvbuf(fp, NULL, _IOFBF, SAR_ARCHIVE_BUF_SIZE);
  
   ret = action_fn(fp, user_data);
  

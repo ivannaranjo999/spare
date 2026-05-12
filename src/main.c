@@ -90,7 +90,7 @@ int main(int argc, char *argv[]){
     }
 
     if (threads_pack == 0){
-      if (just_run(archive_path, do_pack, &a) != 0){
+      if (just_run(TMP_FILENAME, do_pack, &a) != 0){
         fprintf(stderr, "error: pack failed\n");
         return 1;
       }

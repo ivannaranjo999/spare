@@ -1,12 +1,121 @@
 #include "sar.h"
 
 /* ----------------------------------------------------------------------------
+ * dircache_init
+ *
+ * Inits dircache struct.
+ * ------------------------------------------------------------------------- */
+void dircache_init(DirCache *c){
+  c->dirs     = NULL;
+  c->count    = 0;
+  c->capacity = 0;
+}
+
+/* ----------------------------------------------------------------------------
+ * dircache_free
+ *
+ * Frees dircache struct.
+ * ------------------------------------------------------------------------- */
+void dircache_free(DirCache *c){
+  /* Local variables */
+  int i;
+ 
+  /* Code */
+  for (i = 0; i < c->count; i++)
+    free(c->dirs[i]);
+  free(c->dirs);
+  c->dirs     = NULL;
+  c->count    = 0;
+  c->capacity = 0;
+}
+
+/* ----------------------------------------------------------------------------
+ * dircache_search
+ *
+ * Performs binary search in DirCache struct.
+ * Returns found or insertion value
+ * ------------------------------------------------------------------------- */
+static int dircache_search(DirCache *c, const char *path){
+  /* Local variables */
+  int lo = 0;
+  int hi = c->count - 1;
+  int mid, cmp;
+ 
+  /* Code */
+  while (lo <= hi) {
+    mid = (lo + hi) / 2;
+    cmp = strcmp(c->dirs[mid], path);
+    if (cmp == 0) return mid; /* found */
+    if (cmp < 0) lo = mid + 1;
+    else hi = mid - 1;
+  }
+  return lo; /* insertion point */
+}
+
+/* ----------------------------------------------------------------------------
+ * dircache_contains
+ *
+ * Performs binary search in DirCache struct.
+ * Returns 1 if path is in cache, 0 if not
+ * ------------------------------------------------------------------------- */
+static int dircache_contains(DirCache *c, const char *path){
+  /* Local variables */
+  int idx;
+ 
+  /* Code */
+  if (c->count == 0) return 0;
+  idx = dircache_search(c, path);
+  return (idx < c->count && strcmp(c->dirs[idx], path) == 0);
+}
+ 
+/* ----------------------------------------------------------------------------
+ * dircache_insert
+ *
+ * Insert path into cache at sorted position.
+ * Returns 0 on success, -1 on error
+ * ------------------------------------------------------------------------- */
+static int dircache_insert(DirCache *c, const char *path){
+  /* Local variables */
+  int    idx;
+  int    new_cap;
+  char **tmp;
+  char  *copy;
+ 
+  /* Code */
+  /* grow if needed */
+  if (c->count == c->capacity) {
+    new_cap = c->capacity == 0 ? 64 : c->capacity * 2;
+    tmp = realloc(c->dirs, new_cap * sizeof(char *));
+    if (tmp == NULL) {
+      perror("realloc dircache");
+      return -1;
+    }
+    c->dirs = tmp;
+    c->capacity = new_cap;
+  }
+ 
+  copy = strdup(path);
+  if (copy == NULL) {
+    perror("strdup dircache");
+    return -1;
+  }
+ 
+  /* find insertion point and shift entries right */
+  idx = dircache_search(c, path);
+  memmove(&c->dirs[idx + 1], &c->dirs[idx],
+          (c->count - idx) * sizeof(char *));
+  c->dirs[idx] = copy;
+  c->count++;
+  return 0;
+}
+
+/* ----------------------------------------------------------------------------
  * mkdir_parents
  *
  * Creates all parent directories for a given filepath.
  * Returns 0 on success, -1 on error.
  * ------------------------------------------------------------------------- */
-static int mkdir_parents(const char *filepath){
+static int mkdir_parents(const char *filepath, DirCache *cache, int verbose){
   char  tmp[SAR_MAX_PATH];
   char *p;
 
@@ -17,9 +126,17 @@ static int mkdir_parents(const char *filepath){
   for (p = tmp + 1; *p; p++){
     if (*p == '/'){
       *p = '\0';
-      if (mkdir(tmp, 0755) != 0 && errno != EEXIST){
-        perror(tmp);
-        return -1;
+
+      /* Skip if already created */
+      if (!dircache_contains(cache, tmp)) {
+        if (verbose) printf("creating '%s' path ...\n", tmp);
+        if (mkdir(tmp, 0755) != 0 && errno != EEXIST){
+          perror(tmp);
+          *p = '/';
+          return -1;
+        }
+        /* record it regardless of whether mkdir or EEXIST */
+        dircache_insert(cache,tmp);
       }
       *p = '/';
     }
@@ -37,7 +154,7 @@ static int mkdir_parents(const char *filepath){
  *         0 if we have reached EOF
  *        -1 on error
  * ------------------------------------------------------------------------- */
-int unpack_file(FILE *archive, int verbose){
+int unpack_file(FILE *archive, DirCache *cache , int verbose){
   /* Local variables */
   FileHeader header;
   FILE *dst;
@@ -73,7 +190,7 @@ int unpack_file(FILE *archive, int verbose){
   header.filename[SAR_MAX_PATH - 1] = '\0';
 
   /* Create parent dirs if needed */
-  if(mkdir_parents(header.filename) != 0){
+  if(mkdir_parents(header.filename, cache, verbose) != 0){
     fseek(archive, (long)header.file_size, SEEK_CUR);
     fprintf(stderr, "error: could not create parent dirs for '%s'\n", header.filename);
     return -1;
@@ -113,6 +230,7 @@ int unpack_file(FILE *archive, int verbose){
     fseek(archive, (long)header.file_size, SEEK_CUR);
     return -1;
   }
+  setvbuf(dst, NULL, _IOFBF, SAR_FILE_BUF_SIZE);
 
   /* Copy data from archive to destination file */
   remaining = header.file_size;
@@ -171,13 +289,20 @@ int unpack_file(FILE *archive, int verbose){
  * ------------------------------------------------------------------------- */
 int unpack(FILE *archive, int verbose){
   /* Local variables */
-  int   result = 0;
-  int   status;
+  int result = 0;
+  int status;
+  DirCache cache;
 
   /* Code */
-  while((status = unpack_file(archive, verbose)) == 1){
+  /* Init mkdir cache */
+  dircache_init(&cache);
+
+  while((status = unpack_file(archive, &cache ,verbose)) == 1){
     /* Keep going until EOF or error */
   }
+
+  /* Free mkdir cache */
+  dircache_free(&cache);
 
   if(status == -1) result = -1;
 

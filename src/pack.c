@@ -80,7 +80,6 @@ static int collect_files(const char *filepath, WorkItem **items, int *count, int
     return 0;
   }
 
-
   /* recurse into directories */
   if (S_ISDIR(st.st_mode)) {
     dir = opendir(filepath);
@@ -192,6 +191,7 @@ static int write_item(const WorkItem *w, int verbose){
     perror(w->filepath);
     return -1;
   }
+  setvbuf(src, NULL, _IOFBF, SAR_FILE_BUF_SIZE);
 
   uint64_t remaining = w->file_size;
   uint8_t buf[COPY_BUFFER_SIZE];
@@ -254,10 +254,10 @@ static void *worker_thread(void *arg) {
  * ------------------------------------------------------------------------- */
  
 int pack_threads(const char *archive_path, const char **filepaths, int count, int verbose) {
-  WorkItem *items    = NULL;
-  int       n_items  = 0;
-  int       capacity = 0;
-  int       result   = 0;
+  WorkItem *items = NULL;
+  int n_items  = 0;
+  int capacity = 0;
+  int result = 0;
 
   /* --- phase 1: collect all files into a flat array ------------- */
 
@@ -379,7 +379,7 @@ int pack_file(FILE *archive, const char *filepath, int verbose){
   DIR *dir;
   struct dirent *entry;
   FileHeader header;
-  char buf[COPY_BUFFER_SIZE];
+  char buf[COPY_BUFFER_SIZE_SMALL];
   char fullpath[SAR_MAX_PATH];
   char linkbuf[SAR_MAX_PATH];
   size_t bytes_read;
@@ -469,6 +469,7 @@ int pack_file(FILE *archive, const char *filepath, int verbose){
     perror(filepath); 
     return -1;
   }
+  setvbuf(src, NULL, _IOFBF, SAR_FILE_BUF_SIZE);
 
   /* Fill header info */
   memset(&header, 0, sizeof(header));

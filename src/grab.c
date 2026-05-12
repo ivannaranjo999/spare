@@ -25,12 +25,13 @@ static int filename_matches(const char *archived_name, const char **filepaths, i
  * ------------------------------------------------------------------------- */
 int grab(FILE *archive, const char **filepaths, int count, int verbose){
   /* Local variables */
-  int        result = 0;
-  int        status = 0;
-  int        exitLoop = 0;
-  int        matched = 0;
-  size_t     n = 0;
+  int result = 0;
+  int status = 0;
+  int exitLoop = 0;
+  int matched = 0;
+  size_t n = 0;
   FileHeader header;
+  DirCache cache;
 
   /* Code */
   /* Read first block */
@@ -45,6 +46,9 @@ int grab(FILE *archive, const char **filepaths, int count, int verbose){
     }
   }
 
+  /* Init mkdir cache */
+  dircache_init(&cache);
+
   /* Exit loop when EOF reached */
   while(exitLoop == 0){
     matched = 0;
@@ -56,7 +60,7 @@ int grab(FILE *archive, const char **filepaths, int count, int verbose){
       fseek(archive, -sizeof(FileHeader), SEEK_CUR);
 
       /* Extract file */
-      status = unpack_file(archive, verbose);
+      status = unpack_file(archive, &cache ,verbose);
       if(status == -1) {
         result = -1;
         fprintf(stderr, "error: could not unpack '%s'\n", header.filename);
@@ -84,6 +88,9 @@ int grab(FILE *archive, const char **filepaths, int count, int verbose){
       }
     }
   }
+
+  /* Free mkdir cache */
+  dircache_free(&cache);
 
   return result;
 }

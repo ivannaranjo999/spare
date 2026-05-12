@@ -20,11 +20,13 @@
 #define SAR_VERSION 1 /* format version */
 #define SAR_MAX_PATH 4096 /* max length of stored path */
 #define SAR_ARCHIVE_BUF_SIZE 1024*1024 /* 1MB read buffer */
+#define SAR_FILE_BUF_SIZE (64 * 1024) /* 64KB for individual file writes */
 
 #define SAR_PACK_THREADS 4 /* Pack worker threads */
 #define SAR_COMPRESS_THREADS 4 /* Compression worker threads*/
 
-#define COPY_BUFFER_SIZE 4096 
+#define COPY_BUFFER_SIZE_SMALL (4 * 1024) /* 4KB for recursing calls */
+#define COPY_BUFFER_SIZE (64 * 1024) /* 64KB for not recursing calls */
 #define ZCHUNK 16384
 #define COMPRESS_CHUNK (128 * 1024) /* 128 KB input per chunk */
 #define DICT_SIZE (32  * 1024) /* 32  KB dictionary */
@@ -63,6 +65,13 @@ typedef struct{
   int result;   /* Result value */
 } DecompressRamArgs;
 
+/* Struct for already created dirs */
+typedef struct{
+  char **dirs; /* sorted array of created dirs */
+  int count;
+  int capacity;
+} DirCache;
+
 typedef enum {
   ARCHIVE_DOESNOTEXIST,
   ARCHIVE_UNKNOWN,
@@ -80,7 +89,7 @@ int pack(FILE *archive_path, const char **filepaths, int count, int verbose);
 int pack_file(FILE *archive, const char *filepath, int verbose);
 int pack_threads(const char *archive_path, const char **filepaths, int count, int verbose);
 int unpack(FILE *archive_path, int verbose);
-int unpack_file(FILE *archive, int verbose);
+int unpack_file(FILE *archive, DirCache *cache, int verbose);
 int compress_arch(const char *dst_path, const char *src_path, int verbose);
 int compress_arch_threads(const char *dst_path, const char *src_path, int verbose);
 int decompress_arch(const char *dst_path, const char *src_path, int verbose);
@@ -91,6 +100,8 @@ int list(FILE *archive);
 int grab(FILE *archive, const char **filepaths, int count, int verbose);
 int insert(FILE *archive_path, const char **filepaths, int count, int verbose);
 int decompress_arch_ram_join(pthread_t thread, DecompressRamArgs *arg);
+void dircache_init(DirCache *c);
+void dircache_free(DirCache *c);
 
 /* Pointer to function of any action with the FILE* of the uncompressed file 
  * and unknown arguments */
