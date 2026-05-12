@@ -77,8 +77,8 @@ ArchiveFormat detect_archive_format(const char *archive_path, int verbose){
  * 
  * Generic action function call with previous decompression step
  * ------------------------------------------------------------------------- */
-int decompress_in_ram_and_run(const char *src_path,
-                        int verbose, ActionFn action_fn, void *user_data) {
+int decompress_in_ram_and_run(const char *src_path, ActionFn action_fn,
+    void *user_data, int verbose) {
   /* Local variables */
   FILE *fp = NULL;
   pthread_t tid;

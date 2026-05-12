@@ -111,9 +111,8 @@ int main(int argc, char *argv[]){
     if (archive_format == ARCHIVE_SAR) {
       return just_run(archive_path, do_unpack, &a) == 0 ? 0 : 1;
     } else if (archive_format == ARCHIVE_SGZ) {
-      decompress_in_disk_and_run(TMP_FILENAME, archive_path, "rb",
-        do_unpack, &a, verbose);
-      return remove(TMP_FILENAME) == 0 ? 0 : 1;
+      return decompress_in_ram_and_run(archive_path, do_unpack, &a, verbose)
+        == 0 ? 0 : 1;
     } else {
       fprintf(stderr, "error: non existing file or corrupt format for '%s'\n",
         archive_path);
@@ -125,6 +124,7 @@ int main(int argc, char *argv[]){
     if (archive_format == ARCHIVE_SAR) {
       return just_run(archive_path, do_list, NULL) == 0 ? 0 : 1;
     } else if (archive_format == ARCHIVE_SGZ) {
+      /* fd in RAM cannot  */
       decompress_in_disk_and_run(TMP_FILENAME, archive_path, "rb", do_list,
         NULL, verbose);
       return remove(TMP_FILENAME) == 0 ? 0 : 1;

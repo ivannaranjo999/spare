@@ -48,7 +48,7 @@ Command legend:
 | Pack              | 1.26s   | 1.92s  | 1.74s     | -         | -         |
 | Pack and compress | 45.80s  | 49.41s | 50.06s    | 72.63s    | 71.90s    |
 | Unpack            | 0.66s   | 1.37s  | -         | -         | -         |
-| Unpack compressed | 6.24s   | 8.68s  | -         | -         | -         |
+| Unpack compressed | 6.24s   | 8.97s  | -         | -         | -         |
 
 **Sys time** for [Linux kernel 7.0](https://cdn.kernel.org/pub/linux/kernel/v7.x/linux-7.0.tar.xz)
 | Operation         | tar     | sar    | sar -p    | sar -c    | sar -T    |
@@ -56,7 +56,7 @@ Command legend:
 | Pack              | 6.18s   | 6.62s  | 6.89s     | -         | -         |
 | Pack and compress | 4.43s   | 7.77s  | 7.23s     | 11.94s    | 10.58s    |
 | Unpack            | 3.73s   | 5.30s  | -         | -         | -         |
-| Unpack compressed | 4.40s   | 5.99s  | -         | -         | -         |
+| Unpack compressed | 4.40s   | 5.54s  | -         | -         | -         |
 
 **Total time** for [Linux kernel 7.0](https://cdn.kernel.org/pub/linux/kernel/v7.x/linux-7.0.tar.xz)
 | Operation         | tar     | sar    | sar -p    | sar -c    | sar -T    |
@@ -64,7 +64,7 @@ Command legend:
 | Pack              | 21.955s | 25.135s| 12.615s   | -         | -         |
 | Pack and compress | 46.237s | 71.21s | 58.670s   | 47.446s   | 34.487s   |
 | Unpack            | 8.010s  | 10.778s| -         | -         | -         |
-| Unpack compressed | 7.154s  | 17.375s| -         | -         | -         |
+| Unpack compressed | 7.154s  | 9.909s | -         | -         | -         |
 
 ### Compression matrix
 
