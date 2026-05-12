@@ -420,19 +420,12 @@ int pack_file(FILE *archive, const char *filepath, int verbose){
  * 'filepaths[0..count-1]'.
  * Returns 0 on success, -1 on error.
  * ------------------------------------------------------------------------- */
-int pack(const char *archive_path, const char **filepaths, int count, int verbose){
+int pack(FILE *archive, const char **filepaths, int count, int verbose){
   /* Local variables */
-  FILE *archive;
   int   result = 0;
   int   it = 0;
 
   /* Code */
-  archive = fopen(archive_path, "wb");
-  if (archive == NULL){
-    perror(archive_path);
-    return -1;
-  }
-  setvbuf(archive, NULL, _IOFBF, SAR_ARCHIVE_BUF_SIZE);
 
   for (it = 0; it < count; ++it){
     if(pack_file(archive, filepaths[it], verbose) != 0){
@@ -440,6 +433,5 @@ int pack(const char *archive_path, const char **filepaths, int count, int verbos
     }
   }
 
-  fclose(archive);
   return result;
 }

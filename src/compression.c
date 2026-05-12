@@ -368,7 +368,8 @@ int compress_arch(const char *dst_path, const char *src_path, int verbose){
  *
  * Returns 0 on success, -1 on error.
  * ------------------------------------------------------------------------- */
-int compress_arch_threads(const char *dst_path, const char *src_path, int verbose){
+int compress_arch_threads(const char *dst_path, const char *src_path, 
+                          int verbose){
   /* Local variables */
   FILE *src = NULL;
   FILE *dst = NULL;

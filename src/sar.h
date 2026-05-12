@@ -29,6 +29,8 @@
 #define COMPRESS_CHUNK (128 * 1024) /* 128 KB input per chunk */
 #define DICT_SIZE (32  * 1024) /* 32  KB dictionary */
 
+#define TMP_FILENAME "sar.tmp" /* Temporal file for in disk operations */
+
 /* File header struct for SAR archives */
 typedef struct {
   char     magic[3];
@@ -75,7 +77,7 @@ typedef enum {
 } FlushNeeded;
 
 /* Functions used somewhere else */
-int pack(const char *archive_path, const char **filepaths, int count, int verbose);
+int pack(FILE *archive_path, const char **filepaths, int count, int verbose);
 int pack_file(FILE *archive, const char *filepath, int verbose);
 int pack_threads(const char *archive_path, const char **filepaths, int count, int verbose);
 int unpack(FILE *archive_path, int verbose);
@@ -88,8 +90,32 @@ int decompress_arch_ram(FILE **dst_fp, const char *src_path,
                         int verbose);
 int list(FILE *archive);
 int grab(FILE *archive, const char **filepaths, int count, int verbose);
-int insert(const char *archive_path, const char **filepaths, int count, int verbose);
+int insert(FILE *archive_path, const char **filepaths, int count, int verbose);
 int decompress_arch_ram_join(pthread_t thread, DecompressRamArgs *arg);
 
+/* Pointer to function of any action with the FILE* of the uncompressed file 
+ * and unknown arguments */
+typedef int (*ActionFn)(FILE *fp, void *user_data);
+typedef struct { int verbose; } UnpackArgs;
+typedef struct { const char **filepaths; int nfiles; int verbose; } GrabArgs;
+typedef struct { const char **filepaths; int nfiles; int verbose; } PackArgs;
+typedef struct { const char **filepaths; int nfiles; int verbose; } InsertArgs;
+
+int do_unpack(FILE *fp, void *user_data);
+int do_list(FILE *fp, void *user_data);
+int do_grab(FILE *fp, void *user_data);
+int do_pack(FILE *fp, void *user_data);
+int do_pack_threads(FILE *fp, void *user_data);
+int do_insert(FILE *fp, void *user_data);
+ArchiveFormat detect_archive_format(const char *archive_path, int verbose);
+int decompress_in_ram_and_run(const char *src_path, int verbose, 
+  ActionFn action_fn, void *user_data) ;
+int decompress_in_disk_and_run(const char *dst_path,
+  const char *src_path, const char *mode, int verbose, ActionFn action_fn,
+  void *user_data) ;
+int compress_in_disk(const char *dst_path, const char *src_path, int verbose,
+  int use_threads);
+int just_run(const char *archive_path, ActionFn action_fn, void *user_data) ;
+void usage(const char *name);
 
 #endif
