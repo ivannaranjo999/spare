@@ -5,11 +5,12 @@
 /* ------------------------------------------------------------------ */
  
 typedef struct {
-    char     filepath[SAR_MAX_PATH];
-    uint8_t *dest;          /* pointer into mmap region for this file */
-    uint64_t file_size;
-    uint32_t mode;
-    int64_t  mtime;
+  char filepath[SAR_MAX_PATH];
+  char linkpath[SAR_MAX_PATH];
+  uint8_t *dest; /* pointer into mmap region for this file */
+  uint64_t file_size;
+  uint32_t mode;
+  int64_t mtime;
 } WorkItem;
  
 typedef struct {
@@ -27,15 +28,58 @@ typedef struct {
  * Returns 0 on success, -1 on error.
  * ------------------------------------------------------------------------- */
 static int collect_files(const char *filepath, WorkItem **items, int *count, int *capacity) {
-  struct stat    st;
-  DIR           *dir;
+  /* Local variables */
+  struct stat st;
+  DIR *dir;
   struct dirent *entry;
-  char           fullpath[SAR_MAX_PATH];
+  char fullpath[SAR_MAX_PATH];
+  char linkbuf[SAR_MAX_PATH];
+  ssize_t linklen;
+  int result = 0;
 
-  if (stat(filepath, &st) != 0) {
+  /* Code */
+  /* Read metadata with lstat to not follow symlinks */
+  if (lstat(filepath, &st) != 0) {
     perror(filepath);
     return -1;
   }
+
+  /* If symlink, store the link target as file data */
+  if (S_ISLNK(st.st_mode)) {
+    linklen = readlink(filepath, linkbuf, sizeof(linkbuf) - 1);
+    if (linklen < 0) {
+      perror(filepath);
+      return -1;
+    }
+    linkbuf[linklen] = '\0';
+
+    /* grow the array if needed */
+    if (*count == *capacity) {
+      int       new_cap = *capacity == 0 ? 64 : *capacity * 2;
+      WorkItem *tmp     = realloc(*items, new_cap * sizeof(WorkItem));
+      if (tmp == NULL) {
+        perror("realloc");
+        return -1;
+      }
+      *items    = tmp;
+      *capacity = new_cap;
+    }
+
+    WorkItem *w = &(*items)[*count];
+    memset(w, 0, sizeof(*w));
+    strncpy(w->filepath, filepath, SAR_MAX_PATH - 1);
+    w->filepath[SAR_MAX_PATH - 1] = '\0';
+    strncpy(w->linkpath, linkbuf, SAR_MAX_PATH - 1);
+    w->linkpath[SAR_MAX_PATH - 1] = '\0';
+    w->file_size = (uint64_t)linklen;
+    w->mode      = (uint32_t)st.st_mode;
+    w->mtime     = (int64_t)st.st_mtime;
+    w->dest      = NULL;
+
+    (*count)++;
+    return 0;
+  }
+
 
   /* recurse into directories */
   if (S_ISDIR(st.st_mode)) {
@@ -44,7 +88,6 @@ static int collect_files(const char *filepath, WorkItem **items, int *count, int
         perror(filepath);
         return -1;
     }
-    int result = 0;
     while ((entry = readdir(dir)) != NULL) {
       if (strcmp(entry->d_name, ".") == 0)  continue;
       if (strcmp(entry->d_name, "..") == 0) continue;
@@ -119,27 +162,39 @@ static uint64_t assign_offsets(WorkItem *items, int count, uint8_t *mmap_base) {
  * ------------------------------------------------------------------------- */
  
 static int write_item(const WorkItem *w, int verbose){
+  /* Local variables */
   /* write header directly into mmap destination */
   FileHeader *header = (FileHeader *)w->dest;
   memset(header, 0, sizeof(FileHeader));
   memcpy(header->magic, SAR_MAGIC, 3);
-  header->version   = SAR_VERSION;
+  header->version = SAR_VERSION;
   header->file_size = w->file_size;
-  header->mode      = w->mode;
-  header->mtime     = w->mtime;
+  header->mode = w->mode;
+  header->mtime = w->mtime;
   strncpy(header->filename, w->filepath, SAR_MAX_PATH - 1);
   header->filename[SAR_MAX_PATH - 1] = '\0';
+  uint8_t *data_dest;
+
+  /* Code */
+  data_dest = w->dest + sizeof(FileHeader);
+
+  /* If symlink, do not fopen anything */
+  if (S_ISLNK(w->mode)) {
+    memcpy(data_dest, w->linkpath, w->file_size);
+    if (verbose)
+      printf("packed: '%s' -> '%s'\n", w->filepath, w->linkpath);
+    return 0;
+  }
 
   /* read file data directly into mmap region after the header */
-  uint8_t *data_dest = w->dest + sizeof(FileHeader);
-  FILE    *src       = fopen(w->filepath, "rb");
+  FILE *src = fopen(w->filepath, "rb");
   if (src == NULL) {
     perror(w->filepath);
     return -1;
   }
 
   uint64_t remaining = w->file_size;
-  uint8_t  buf[COPY_BUFFER_SIZE];
+  uint8_t buf[COPY_BUFFER_SIZE];
 
   while (remaining > 0) {
     size_t chunk      = remaining < sizeof(buf) ? remaining : sizeof(buf);
@@ -319,21 +374,62 @@ int pack_threads(const char *archive_path, const char **filepaths, int count, in
  * ------------------------------------------------------------------------- */
 int pack_file(FILE *archive, const char *filepath, int verbose){
   /* Local variables */
-  struct stat    st;
-  FILE          *src;
-  DIR           *dir;
+  struct stat st;
+  FILE *src;
+  DIR *dir;
   struct dirent *entry;
-  FileHeader     header;
-  char           buf[COPY_BUFFER_SIZE];
-  char           fullpath[SAR_MAX_PATH];
-  size_t         bytes_read;
-  int            result = 0;
+  FileHeader header;
+  char buf[COPY_BUFFER_SIZE];
+  char fullpath[SAR_MAX_PATH];
+  char linkbuf[SAR_MAX_PATH];
+  size_t bytes_read;
+  ssize_t linklen;
+  int result = 0;
 
   /* Code */
-  /* Read metadata */
-  if (stat(filepath, &st) != 0) {
+  /* Read metadata with lstat to not follow symlinks */
+  if (lstat(filepath, &st) != 0) {
     perror(filepath);
     return -1;
+  }
+
+  /* If symlink, store the link target as file data */
+  if (S_ISLNK(st.st_mode)) {
+    linklen = readlink(filepath, linkbuf, sizeof(linkbuf) - 1);
+    if (linklen < 0) {
+      perror(filepath);
+      return -1;
+    }
+    linkbuf[linklen] = '\0';
+ 
+    /* Fill header */
+    memset(&header, 0, sizeof(header));
+    memcpy(header.magic, SAR_MAGIC, 3);
+    header.version = SAR_VERSION;
+    header.file_size = (uint64_t)linklen;
+    header.mode = (uint32_t)st.st_mode;
+    header.mtime = (int64_t)st.st_mtime;
+    strncpy(header.filename, filepath, SAR_MAX_PATH - 1);
+    header.filename[SAR_MAX_PATH - 1] = '\0';
+ 
+    /* Write header */
+    if (fwrite(&header, sizeof(header), 1, archive) != 1) {
+      fprintf(stderr, "error: failed to write header for '%s'\n", filepath);
+      return -1;
+    }
+ 
+    /* Write target path as file data */
+    if (fwrite(linkbuf, 1, linklen, archive) != (size_t)linklen) {
+      fprintf(stderr, "error: failed to write symlink target for '%s'\n",
+        filepath);
+      return -1;
+    }
+ 
+    if (verbose)
+      printf("packed: '%s' -> '%s'\n", filepath, linkbuf);
+ 
+    /* Do not continue */
+    return 0;
   }
 
   /* If dir, recurse */
@@ -356,6 +452,8 @@ int pack_file(FILE *archive, const char *filepath, int verbose){
       if (pack_file(archive, fullpath, verbose) != 0) result = -1;
     }
     closedir(dir);
+
+    /* Do not continue */
     return result;
   }
 
@@ -375,10 +473,10 @@ int pack_file(FILE *archive, const char *filepath, int verbose){
   /* Fill header info */
   memset(&header, 0, sizeof(header));
   memcpy(header.magic, SAR_MAGIC, 3);
-  header.version   = SAR_VERSION;
+  header.version = SAR_VERSION;
   header.file_size = (uint64_t)st.st_size;
-  header.mode      = (uint32_t)st.st_mode;
-  header.mtime     = (int64_t)st.st_mtime;
+  header.mode = (uint32_t)st.st_mode;
+  header.mtime = (int64_t)st.st_mtime;
   strncpy(header.filename, filepath, SAR_MAX_PATH - 1);
   header.filename[SAR_MAX_PATH - 1] = '\0';
 

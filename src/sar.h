@@ -40,7 +40,6 @@ typedef struct {
   uint32_t mode;
   int64_t  mtime;
   uint8_t  _pad[4]; /* Keeps sizeof(FileHeader) a multiple of 8 */
-
 } FileHeader;
 
 /* Struct for parallel compression */

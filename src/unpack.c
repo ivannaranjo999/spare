@@ -39,12 +39,13 @@ static int mkdir_parents(const char *filepath){
  * ------------------------------------------------------------------------- */
 int unpack_file(FILE *archive, int verbose){
   /* Local variables */
-  FileHeader     header;
-  FILE          *dst;
-  char           buf[COPY_BUFFER_SIZE];
-  uint64_t       remaining;
-  size_t         bytes_read, to_write, n, chunk;
+  FileHeader header;
+  FILE *dst;
+  char buf[COPY_BUFFER_SIZE];
+  uint64_t remaining, len;
+  size_t bytes_read, to_write, n, chunk;
   struct utimbuf times;
+  char linkbuf[SAR_MAX_PATH];
 
   /* Code */
   /* Read header */
@@ -76,6 +77,33 @@ int unpack_file(FILE *archive, int verbose){
     fseek(archive, (long)header.file_size, SEEK_CUR);
     fprintf(stderr, "error: could not create parent dirs for '%s'\n", header.filename);
     return -1;
+  }
+
+  /* Restore symlink */
+  if (S_ISLNK(header.mode)) {
+    len = header.file_size < SAR_MAX_PATH - 1 ? 
+      header.file_size : SAR_MAX_PATH - 1;
+
+    /* read target path string from archive */
+    if (fread(linkbuf, 1, len, archive) != len) {
+      fprintf(stderr, "error: failed to read symlink target for '%s'\n",
+        header.filename);
+      return -1;
+    }
+    linkbuf[len] = '\0';
+
+    /* remove existing file/link at destination if any */
+    unlink(header.filename);
+
+    if (symlink(linkbuf, header.filename) != 0) {
+      perror(header.filename);
+      return -1;
+    }
+
+    if (verbose)
+      printf("unpacked: '%s' -> '%s'\n", header.filename, linkbuf);
+
+    return 1;
   }
 
   /* Open destination file */
