@@ -191,6 +191,7 @@ int just_run(const char *archive_path, ActionFn action_fn, void *user_data) {
  * Help information
  * ------------------------------------------------------------------------- */
 void usage(const char *name){
+  print_version(name);
   fprintf(stderr, "Usage:\n");
   fprintf(stderr, "Actions:\n");
   fprintf(stderr, "  %s p   <archive.sar> <file1..fileN>       Pack given files or folders to a SAR archive.\n", name);
@@ -201,8 +202,20 @@ void usage(const char *name){
   fprintf(stderr, "  %s i   <archive.sar|.sgz> <file1..fileN>  Insert specific files to a SAR archive.\n", name);
   fprintf(stderr, "Flags:\n");
   fprintf(stderr, "  -h prints this information.\n");
+  fprintf(stderr, "  -V prints SAR version.\n");
   fprintf(stderr, "  -v verbose output.\n");
   fprintf(stderr, "  -p enable threading for packing.\n");
   fprintf(stderr, "  -c enable threading for compression.\n");
   fprintf(stderr, "  -T p and c flags.\n");
+}
+
+/* ----------------------------------------------------------------------------
+ * print_version
+ * 
+ * Prints SAR version
+ * ------------------------------------------------------------------------- */
+void print_version (const char *name){
+  printf("%s %s\n", name, SAR_PRINT_VERSION);
+  printf("\n");
+  printf("Written by Ivan Naranjo Ortega.\n");
 }

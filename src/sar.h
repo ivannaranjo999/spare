@@ -18,6 +18,7 @@
 
 #define SAR_MAGIC "SAR" /* Magic string at start of every header */
 #define SAR_VERSION 1 /* format version */
+#define SAR_PRINT_VERSION "v1.1" /* release version */
 #define SAR_MAX_PATH 4096 /* max length of stored path */
 #define SAR_ARCHIVE_BUF_SIZE 1024*1024 /* 1MB read buffer */
 #define SAR_FILE_BUF_SIZE (64 * 1024) /* 64KB for individual file writes */
@@ -127,5 +128,6 @@ int compress_in_disk(const char *dst_path, const char *src_path,
   int use_threads, int verbose);
 int just_run(const char *archive_path, ActionFn action_fn, void *user_data) ;
 void usage(const char *name);
+void print_version (const char *name);
 
 #endif

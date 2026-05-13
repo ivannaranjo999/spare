@@ -36,6 +36,9 @@ int main(int argc, char *argv[]){
       threads_pack = 1;
       threads_compress = 1;
       argv[i] = NULL;
+    } else if(strcmp(argv[i], "-V") == 0){
+      print_version(argv[0]);
+      return 0;
     }
   }
 
