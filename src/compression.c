@@ -383,12 +383,12 @@ int compress_arch_threads(const char *dst_path, const char *src_path,
   int t = 0;
   int err = 0;
   uint32_t crc = 0, total_size = 0;
-  pthread_t      threads[SAR_COMPRESS_THREADS];
+  pthread_t *threads = NULL;
  
   /* Code */
   if (verbose)
     printf("compressing to '%s' (%d threads, %d KB chunks) ...\n",
-          dst_path, SAR_COMPRESS_THREADS, COMPRESS_CHUNK / 1024);
+          dst_path, g_nthreads, COMPRESS_CHUNK / 1024);
 
   /* open files */
   src = fopen(src_path, "rb");
@@ -425,6 +425,12 @@ int compress_arch_threads(const char *dst_path, const char *src_path,
   if (verbose)
     printf("compress: %d chunk(s) to process\n", n_chunks);
 
+  threads = malloc(g_nthreads * sizeof(pthread_t));
+  if (!threads) {
+    result = -1;
+    goto cleanup;
+  }
+
   /*  write gzip header */
 
   if (write_gzip_header(dst) != 0) {
@@ -432,10 +438,10 @@ int compress_arch_threads(const char *dst_path, const char *src_path,
     goto cleanup;
   }
 
-  /* compress in batches of SAR_COMPRESS_THREADS */
-  for (base = 0; base < n_chunks; base += SAR_COMPRESS_THREADS) {
+  /* compress in batches of g_nthreads */
+  for (base = 0; base < n_chunks; base += g_nthreads) {
     batch = n_chunks - base;
-    if (batch > SAR_COMPRESS_THREADS) batch = SAR_COMPRESS_THREADS;
+    if (batch > g_nthreads) batch = g_nthreads;
 
     /* spawn threads */
     for (t = 0; t < batch; t++) {
@@ -492,6 +498,7 @@ int compress_arch_threads(const char *dst_path, const char *src_path,
     printf("compress: done, %u bytes uncompressed\n", total_size);
 
 cleanup:
+  free(threads);
   free_chunks(chunks, n_chunks);
   fclose(dst);
   return result;

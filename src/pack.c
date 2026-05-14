@@ -255,16 +255,27 @@ static void *worker_thread(void *arg) {
  
 int pack_threads(const char *archive_path, const char **filepaths, int count, int verbose) {
   WorkItem *items = NULL;
-  int n_items  = 0;
+  int n_items = 0;
   int capacity = 0;
   int result = 0;
+  uint64_t total_size = 0;
+  int fd = -1;
+  uint8_t *mmap_base = NULL;
+  int n_threads = 0;
+  pthread_t *threads = NULL;
+  ThreadArgs *args = NULL;
+  int base = 0;
+  int extra = 0;
+  int offset = 0;
+  int i = 0;
+  int t = 0;
 
   /* --- phase 1: collect all files into a flat array ------------- */
 
   if (verbose)
     printf("pre-allocating files in memory ...\n");
 
-  for (int i = 0; i < count; i++) {
+  for (i = 0; i < count; i++) {
     if (collect_files(filepaths[i], &items, &n_items, &capacity) != 0)
         result = -1;
   }
@@ -277,8 +288,8 @@ int pack_threads(const char *archive_path, const char **filepaths, int count, in
 
   /* --- phase 2: calculate total archive size -------------------- */
 
-  uint64_t total_size = 0;
-  for (int i = 0; i < n_items; i++)
+  total_size = 0;
+  for (i = 0; i < n_items; i++)
     total_size += sizeof(FileHeader) + items[i].file_size;
 
   if (verbose)
@@ -287,7 +298,7 @@ int pack_threads(const char *archive_path, const char **filepaths, int count, in
 
   /* --- phase 3: open and pre-allocate output file --------------- */
 
-  int fd = open(archive_path, O_RDWR | O_CREAT | O_TRUNC, 0644);
+  fd = open(archive_path, O_RDWR | O_CREAT | O_TRUNC, 0644);
   if (fd < 0) {
     perror(archive_path);
     free(items);
@@ -303,8 +314,7 @@ int pack_threads(const char *archive_path, const char **filepaths, int count, in
 
   /* --- phase 4: mmap the output file ---------------------------- */
 
-  uint8_t *mmap_base = mmap(NULL, total_size,
-                            PROT_WRITE, MAP_SHARED, fd, 0);
+  mmap_base = mmap(NULL, total_size, PROT_WRITE, MAP_SHARED, fd, 0);
   if (mmap_base == MAP_FAILED) {
     perror("mmap");
     close(fd);
@@ -320,19 +330,24 @@ int pack_threads(const char *archive_path, const char **filepaths, int count, in
 
   /* --- phase 6: divide work and spawn threads ------------------- */
 
-  int n_threads = SAR_PACK_THREADS;
+  n_threads = g_nthreads;
   if (n_threads > n_items) n_threads = n_items;  /* cap at file count */
 
-  pthread_t  threads[SAR_PACK_THREADS];
-  ThreadArgs args[SAR_PACK_THREADS];
+  threads = malloc(n_threads * sizeof(pthread_t));
+  args = malloc(n_threads * sizeof(ThreadArgs));
+  if (!threads || !args) {
+    free(threads); free(args); free(items);
+    munmap(mmap_base, total_size);
+    return -1;
+  }
 
   /* distribute items evenly, first (n_items % n_threads) threads  */
   /* get one extra item so no file is left unassigned               */
-  int base   = n_items / n_threads;
-  int extra  = n_items % n_threads;
-  int offset = 0;
+  base = n_items / n_threads;
+  extra = n_items % n_threads;
+  offset = 0;
 
-  for (int t = 0; t < n_threads; t++) {
+  for (t = 0; t < n_threads; t++) {
     args[t].items   = &items[offset];
     args[t].count   = base + (t < extra ? 1 : 0);
     args[t].verbose = verbose;
@@ -347,7 +362,7 @@ int pack_threads(const char *archive_path, const char **filepaths, int count, in
 
   /* --- phase 7: join all threads -------------------------------- */
 
-  for (int t = 0; t < n_threads; t++) {
+  for (t = 0; t < n_threads; t++) {
     pthread_join(threads[t], NULL);
     if (args[t].result != 0) result = -1;
   }
@@ -360,6 +375,8 @@ int pack_threads(const char *archive_path, const char **filepaths, int count, in
   }
 
   munmap(mmap_base, total_size);
+  free(threads);
+  free(args);
   free(items);
 
   return result;

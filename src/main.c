@@ -1,8 +1,10 @@
 #include "sar.h"
 
+int g_nthreads = 1;
+
 /* ----------------------------------------------------------------------------
  * main
- * 
+ *
  * SAR tool entry point.
  * ------------------------------------------------------------------------- */
 int main(int argc, char *argv[]){
@@ -12,8 +14,6 @@ int main(int argc, char *argv[]){
   const char **filepaths = NULL;
   int i = 0;
   int verbose = 0;
-  int threads_pack = 0;
-  int threads_compress = 0;
   int nfiles = 0;
   ArchiveFormat archive_format = ARCHIVE_DOESNOTEXIST;
 
@@ -26,15 +26,20 @@ int main(int argc, char *argv[]){
     } else if(strcmp(argv[i], "-h") == 0){
       usage(argv[0]);
       return 0;
-    } else if(strcmp(argv[i], "-p") == 0){
-      threads_pack = 1;
+    } else if(strcmp(argv[i], "-j") == 0){
       argv[i] = NULL;
-    } else if(strcmp(argv[i], "-c") == 0){
-      threads_compress = 1;
-      argv[i] = NULL;
-    } else if(strcmp(argv[i], "-T") == 0){
-      threads_pack = 1;
-      threads_compress = 1;
+      if (i + 1 < argc && argv[i+1] != NULL && isdigit((unsigned char)argv[i+1][0])){
+        g_nthreads = atoi(argv[i+1]);
+        if (g_nthreads < 1) g_nthreads = 1;
+        argv[i+1] = NULL;
+        i++;
+      } else {
+        g_nthreads = (int)sysconf(_SC_NPROCESSORS_ONLN);
+        if (g_nthreads < 1) g_nthreads = 1;
+      }
+    } else if(strncmp(argv[i], "-j", 2) == 0 && argv[i][2] != '\0'){
+      g_nthreads = atoi(argv[i] + 2);
+      if (g_nthreads < 1) g_nthreads = 1;
       argv[i] = NULL;
     } else if(strcmp(argv[i], "-V") == 0){
       print_version(argv[0]);
@@ -75,11 +80,10 @@ int main(int argc, char *argv[]){
     }
 
     PackArgs a = { filepaths, nfiles, verbose };
-    if (threads_pack == 0){
-      return just_run(archive_path, do_pack, &a) == 0 ? 0 : 1;
+    if (g_nthreads == 1){
+      return just_run(archive_path, "wb", do_pack, &a) == 0 ? 0 : 1;
     } else {
-      /* Special case, pack_threads opens file in function */
-      return pack_threads(archive_path, filepaths, nfiles, verbose) 
+      return pack_threads(archive_path, filepaths, nfiles, verbose)
         == 0 ? 0 : 1;
     }
 
@@ -92,27 +96,26 @@ int main(int argc, char *argv[]){
       return 1;
     }
 
-    if (threads_pack == 0){
-      if (just_run(TMP_FILENAME, do_pack, &a) != 0){
+    if (g_nthreads == 1){
+      if (just_run(TMP_FILENAME, "wb", do_pack, &a) != 0){
         fprintf(stderr, "error: pack failed\n");
         return 1;
       }
     } else {
-      /* Special case, pack_threads opens file in function */
       if (pack_threads(TMP_FILENAME, filepaths, nfiles, verbose) != 0){
         fprintf(stderr, "error: pack failed\n");
         return 1;
       }
     }
 
-    compress_in_disk(archive_path, TMP_FILENAME, threads_compress, verbose);
+    compress_in_disk(archive_path, TMP_FILENAME, verbose);
     return remove(TMP_FILENAME) == 0 ? 0 : 1;
 
   /* Action - u */
   } else if (strcmp(action, "u") == 0){
     UnpackArgs a = { verbose };
     if (archive_format == ARCHIVE_SAR) {
-      return just_run(archive_path, do_unpack, &a) == 0 ? 0 : 1;
+      return just_run(archive_path, "rb", do_unpack, &a) == 0 ? 0 : 1;
     } else if (archive_format == ARCHIVE_SGZ) {
       return decompress_in_ram_and_run(archive_path, do_unpack, &a, verbose)
         == 0 ? 0 : 1;
@@ -125,7 +128,7 @@ int main(int argc, char *argv[]){
   /* Action - l */
   } else if (strcmp(action, "l") == 0){
     if (archive_format == ARCHIVE_SAR) {
-      return just_run(archive_path, do_list, NULL) == 0 ? 0 : 1;
+      return just_run(archive_path, "rb", do_list, NULL) == 0 ? 0 : 1;
     } else if (archive_format == ARCHIVE_SGZ) {
       /* fd in RAM cannot  */
       decompress_in_disk_and_run(TMP_FILENAME, archive_path, "rb", do_list,
@@ -141,7 +144,7 @@ int main(int argc, char *argv[]){
   } else if (strcmp(action, "g") == 0){
     GrabArgs a = { filepaths, nfiles, verbose };
     if (archive_format == ARCHIVE_SAR) {
-      return just_run(archive_path, do_grab, &a) == 0 ? 0 : 1;
+      return just_run(archive_path, "rb", do_grab, &a) == 0 ? 0 : 1;
     } else if (archive_format == ARCHIVE_SGZ) {
       decompress_in_disk_and_run(TMP_FILENAME, archive_path, "rb", 
         do_grab, &a, verbose);
@@ -161,12 +164,12 @@ int main(int argc, char *argv[]){
     }
     if (archive_format == ARCHIVE_SAR) {
       PackArgs a = { filepaths, nfiles, verbose };
-      return just_run(archive_path, do_pack, &a) == 0 ? 0 : 1;
+      return just_run(archive_path, "ab", do_pack, &a) == 0 ? 0 : 1;
     } else if (archive_format == ARCHIVE_SGZ) {
       InsertArgs a = { filepaths, nfiles, verbose };
       decompress_in_disk_and_run(TMP_FILENAME, archive_path, "ab",
         do_insert, &a, verbose);
-      compress_in_disk(archive_path, TMP_FILENAME, threads_compress, verbose);
+      compress_in_disk(archive_path, TMP_FILENAME, verbose);
       return remove(TMP_FILENAME) == 0 ? 0 : 1;
     } else {
       fprintf(stderr, "error: non existing file or corrupt format for '%s'\n",

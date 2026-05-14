@@ -2,6 +2,7 @@
 #define SAR_H
 
 #include <stdint.h>
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -23,8 +24,7 @@
 #define SAR_ARCHIVE_BUF_SIZE 1024*1024 /* 1MB read buffer */
 #define SAR_FILE_BUF_SIZE (64 * 1024) /* 64KB for individual file writes */
 
-#define SAR_PACK_THREADS 4 /* Pack worker threads */
-#define SAR_COMPRESS_THREADS 4 /* Compression worker threads*/
+extern int g_nthreads; /* Worker thread count, set by -j flag */
 
 #define COPY_BUFFER_SIZE_SMALL (4 * 1024) /* 4KB for recursing calls */
 #define COPY_BUFFER_SIZE (64 * 1024) /* 64KB for not recursing calls */
@@ -124,9 +124,8 @@ int decompress_in_ram_and_run(const char *src_path, ActionFn action_fn,
 int decompress_in_disk_and_run(const char *dst_path,
   const char *src_path, const char *mode, ActionFn action_fn, void *user_data,
   int verbose) ;
-int compress_in_disk(const char *dst_path, const char *src_path, 
-  int use_threads, int verbose);
-int just_run(const char *archive_path, ActionFn action_fn, void *user_data) ;
+int compress_in_disk(const char *dst_path, const char *src_path, int verbose);
+int just_run(const char *archive_path, const char *mode, ActionFn action_fn, void *user_data);
 void usage(const char *name);
 void print_version (const char *name);
 

@@ -144,9 +144,8 @@ int decompress_in_disk_and_run(const char *dst_path, const char *src_path,
  * Calls compress_arch or compress_arch_threads
  * Returns 0 on success, -1 on error.
  * ------------------------------------------------------------------------- */
-int compress_in_disk(const char *dst_path, const char *src_path, 
-            int use_threads, int verbose){
-  if (use_threads == 0){
+int compress_in_disk(const char *dst_path, const char *src_path, int verbose){
+  if (g_nthreads == 1){
     if (compress_arch(dst_path, src_path, verbose) != 0) {
       fprintf(stderr, "error: compress_arch failed\n");
       return 1;
@@ -166,13 +165,13 @@ int compress_in_disk(const char *dst_path, const char *src_path,
  * 
  * Generic action function call with NO previous decompression step
  * ------------------------------------------------------------------------- */
-int just_run(const char *archive_path, ActionFn action_fn, void *user_data) {
+int just_run(const char *archive_path, const char *mode, ActionFn action_fn, void *user_data) {
   /* Local variables */
-  FILE *fp  = NULL;
+  FILE *fp = NULL;
   int ret;
- 
+
   /* Code */
-  fp = fopen(archive_path, "rb");
+  fp = fopen(archive_path, mode);
   if (fp == NULL) {
     perror(archive_path);
     return -1;
@@ -201,12 +200,9 @@ void usage(const char *name){
   fprintf(stderr, "  %s g   <archive.sar|.sgz> <file1..fileN>  Grab specific files contained in a SAR archive.\n", name);
   fprintf(stderr, "  %s i   <archive.sar|.sgz> <file1..fileN>  Insert specific files to a SAR archive.\n", name);
   fprintf(stderr, "Flags:\n");
-  fprintf(stderr, "  -h prints this information.\n");
-  fprintf(stderr, "  -V prints SAR version.\n");
-  fprintf(stderr, "  -v verbose output.\n");
-  fprintf(stderr, "  -p enable threading for packing.\n");
-  fprintf(stderr, "  -c enable threading for compression.\n");
-  fprintf(stderr, "  -T p and c flags.\n");
+  fprintf(stderr, "  -h         prints this information.\n");
+  fprintf(stderr, "  -v         verbose output.\n");
+  fprintf(stderr, "  -j [N]     use N threads for packing and compression (default: all cores).\n");
 }
 
 /* ----------------------------------------------------------------------------
