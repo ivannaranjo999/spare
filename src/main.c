@@ -46,6 +46,7 @@ int main(int argc, char *argv[]){
       return 0;
     }
   }
+  if (verbose && g_nthreads > 1) printf("number of threads: %d\n", g_nthreads);
 
   /* Check if min amount of argc is present */
   if (argc < 3) {
