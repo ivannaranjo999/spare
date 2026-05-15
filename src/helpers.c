@@ -95,7 +95,7 @@ int decompress_in_ram_and_run(const char *src_path, ActionFn action_fn,
  
   ret = action_fn(fp, user_data);
  
-  /* MUST fclose before join — unblocks the decompression thread */
+  /* MUST fclose before join, unblocks the decompression thread */
   fclose(fp);
  
   if (decompress_arch_ram_join(tid, &args) != 0) {
@@ -162,26 +162,118 @@ int compress_in_disk(const char *dst_path, const char *src_path, int verbose){
 
 /* ----------------------------------------------------------------------------
  * just_run
- * 
- * Generic action function call with NO previous decompression step
+ *
+ * Generic action function call with NO previous decompression step.
+ * If archive_path is "-", uses stdin (mode "rb") or stdout (mode "wb"/"ab").
  * ------------------------------------------------------------------------- */
 int just_run(const char *archive_path, const char *mode, ActionFn action_fn, void *user_data) {
   /* Local variables */
   FILE *fp = NULL;
+  int is_stdio = 0;
   int ret;
 
   /* Code */
-  fp = fopen(archive_path, mode);
-  if (fp == NULL) {
-    perror(archive_path);
+  is_stdio = (strcmp(archive_path, "-") == 0);
+
+  if (is_stdio) {
+    fp = (mode[0] == 'r') ? stdin : stdout;
+  } else {
+    fp = fopen(archive_path, mode);
+    if (fp == NULL) {
+      perror(archive_path);
+      return -1;
+    }
+    setvbuf(fp, NULL, _IOFBF, SAR_ARCHIVE_BUF_SIZE);
+  }
+
+  ret = action_fn(fp, user_data);
+
+  if (is_stdio) {
+    if (mode[0] != 'r') fflush(fp);
+  } else {
+    fclose(fp);
+  }
+  return ret;
+}
+
+/* ----------------------------------------------------------------------------
+ * stream_file_to_stdout
+ *
+ * Copy contents of path to stdout. Used after pack_threads writes to a temp
+ * file so the caller can stream the result without losing multithreading.
+ * Returns 0 on success, -1 on error.
+ * ------------------------------------------------------------------------- */
+int stream_file_to_stdout(const char *path) {
+  /* Local variables */
+  FILE *src = NULL;
+  char buf[COPY_BUFFER_SIZE];
+  size_t n;
+
+  /* Code */
+  src = fopen(path, "rb");
+  if (src == NULL) {
+    perror(path);
     return -1;
   }
-  setvbuf(fp, NULL, _IOFBF, SAR_ARCHIVE_BUF_SIZE);
- 
-  ret = action_fn(fp, user_data);
- 
-  fclose(fp);
-  return ret;
+  setvbuf(src, NULL, _IOFBF, SAR_ARCHIVE_BUF_SIZE);
+
+  while ((n = fread(buf, 1, sizeof(buf), src)) > 0) {
+    if (fwrite(buf, 1, n, stdout) != n) {
+      fprintf(stderr, "error: failed to stream '%s' to stdout\n", path);
+      fclose(src);
+      return -1;
+    }
+  }
+
+  if (ferror(src)) {
+    fprintf(stderr, "error: failed to read '%s'\n", path);
+    fclose(src);
+    return -1;
+  }
+
+  fclose(src);
+  fflush(stdout);
+  return 0;
+}
+
+/* ----------------------------------------------------------------------------
+ * buffer_stdin_to_file
+ *
+ * Copy all of stdin into dst_path. Used when reading a compressed archive
+ * from stdin: we buffer it to a seekable temp file so the decompressor can
+ * read it normally.
+ * Returns 0 on success, -1 on error.
+ * ------------------------------------------------------------------------- */
+int buffer_stdin_to_file(const char *dst_path) {
+  /* Local variables */
+  FILE *dst = NULL;
+  char buf[COPY_BUFFER_SIZE];
+  size_t n;
+
+  /* Code */
+  dst = fopen(dst_path, "wb");
+  if (dst == NULL) {
+    perror(dst_path);
+    return -1;
+  }
+  setvbuf(dst, NULL, _IOFBF, SAR_ARCHIVE_BUF_SIZE);
+
+  while ((n = fread(buf, 1, sizeof(buf), stdin)) > 0) {
+    if (fwrite(buf, 1, n, dst) != n) {
+      fprintf(stderr, "error: failed to buffer stdin to '%s'\n", dst_path);
+      fclose(dst);
+      return -1;
+    }
+  }
+
+  if (ferror(stdin)) {
+    fprintf(stderr, "error: failed to read stdin\n");
+    fclose(dst);
+    return -1;
+  }
+
+  fclose(dst);
+  return 0;
 }
 
 /* ----------------------------------------------------------------------------
@@ -203,6 +295,11 @@ void usage(const char *name){
   fprintf(stderr, "  -h         prints this information.\n");
   fprintf(stderr, "  -v         verbose output.\n");
   fprintf(stderr, "  -j [N]     use N threads for packing and compression (default: all cores).\n");
+  fprintf(stderr, "  -z         when archive path is '-', treat stdin as compressed (SGZ).\n");
+  fprintf(stderr, "\nPipeline:\n");
+  fprintf(stderr, "  Use '-' as archive path to read/write stdin/stdout.\n");
+  fprintf(stderr, "  %s p  - <file1..fileN>  | %s u  -       Pack and extract via pipe.\n", name, name);
+  fprintf(stderr, "  %s pz - <file1..fileN>  | %s u  - -z    Pack compressed and extract via pipe.\n", name, name);
 }
 
 /* ----------------------------------------------------------------------------

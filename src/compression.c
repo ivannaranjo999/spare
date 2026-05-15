@@ -262,23 +262,29 @@ int compress_arch(const char *dst_path, const char *src_path, int verbose){
   unsigned char out[ZCHUNK];
   FILE *dst = NULL;
   FILE *src = NULL;
+  int dst_is_stdout = 0;
 
   /* Code */
-  if (verbose)
-    printf("compressing to '%s' ...\n", 
-      dst_path);
+  dst_is_stdout = (strcmp(dst_path, "-") == 0);
 
-  dst = fopen(dst_path, "wb");
-  if (dst == NULL) {
-    fprintf(stderr, "error: could not open '%s'\n", dst_path);
-    return -1;
+  if (verbose)
+    printf("compressing to '%s' ...\n", dst_is_stdout ? "stdout" : dst_path);
+
+  if (dst_is_stdout) {
+    dst = stdout;
+  } else {
+    dst = fopen(dst_path, "wb");
+    if (dst == NULL) {
+      fprintf(stderr, "error: could not open '%s'\n", dst_path);
+      return -1;
+    }
+    setvbuf(dst, NULL, _IOFBF, SAR_ARCHIVE_BUF_SIZE);
   }
-  setvbuf(dst, NULL, _IOFBF, SAR_ARCHIVE_BUF_SIZE);
 
   src = fopen(src_path, "rb");
   if (src == NULL) {
     fprintf(stderr, "error: could not open '%s'\n", src_path);
-    fclose(dst);
+    if (!dst_is_stdout) fclose(dst);
     return -1;
   }
   setvbuf(src, NULL, _IOFBF, SAR_ARCHIVE_BUF_SIZE);
@@ -292,16 +298,18 @@ int compress_arch(const char *dst_path, const char *src_path, int verbose){
                      8,
                      Z_DEFAULT_STRATEGY);
   if (ret != Z_OK){
-    return -1;
-    fclose(dst);
+    if (!dst_is_stdout) fclose(dst);
     fclose(src);
-  } 
+    return -1;
+  }
 
   /* Compress until EOF */
   do {
     strm.avail_in = fread(in, 1, ZCHUNK, src);
     if (ferror(src)) {
       (void)deflateEnd(&strm);
+      if (!dst_is_stdout) fclose(dst);
+      fclose(src);
       return -1;
     }
     flush = feof(src) ? Z_FINISH : Z_NO_FLUSH;
@@ -314,28 +322,28 @@ int compress_arch(const char *dst_path, const char *src_path, int verbose){
       ret = deflate(&strm, flush);
       if(ret == Z_STREAM_ERROR){
         fprintf(stderr, "error: failure during compression\n");
-        fclose(dst);
+        if (!dst_is_stdout) fclose(dst);
         fclose(src);
         return -1;
       }
       have = ZCHUNK - strm.avail_out;
       if (fwrite(out, 1, have, dst) != have || ferror(dst)) {
         (void)deflateEnd(&strm);
-        fclose(dst);
+        if (!dst_is_stdout) fclose(dst);
         fclose(src);
         return -1;
       }
     } while (strm.avail_out == 0);
     if (strm.avail_in != 0){
       fprintf(stderr, "error: failure during compression\n");
-      fclose(dst);
+      if (!dst_is_stdout) fclose(dst);
       fclose(src);
       return -1;
     }
   } while (flush != Z_FINISH);
   if(ret != Z_STREAM_END){
       fprintf(stderr, "error: failure during compression\n");
-      fclose(dst);
+      if (!dst_is_stdout) fclose(dst);
       fclose(src);
       return -1;
   }
@@ -343,7 +351,7 @@ int compress_arch(const char *dst_path, const char *src_path, int verbose){
   /* Clean up */
   (void)deflateEnd(&strm);
 
-  fclose(dst);
+  if (dst_is_stdout) fflush(dst); else fclose(dst);
   fclose(src);
 
   return 0;
@@ -368,7 +376,7 @@ int compress_arch(const char *dst_path, const char *src_path, int verbose){
  *
  * Returns 0 on success, -1 on error.
  * ------------------------------------------------------------------------- */
-int compress_arch_threads(const char *dst_path, const char *src_path, 
+int compress_arch_threads(const char *dst_path, const char *src_path,
                           int verbose){
   /* Local variables */
   FILE *src = NULL;
@@ -382,13 +390,16 @@ int compress_arch_threads(const char *dst_path, const char *src_path,
   int i = 0;
   int t = 0;
   int err = 0;
+  int dst_is_stdout = 0;
   uint32_t crc = 0, total_size = 0;
   pthread_t *threads = NULL;
- 
+
   /* Code */
+  dst_is_stdout = (strcmp(dst_path, "-") == 0);
+
   if (verbose)
     printf("compressing to '%s' (%d threads, %d KB chunks) ...\n",
-          dst_path, g_nthreads, COMPRESS_CHUNK / 1024);
+          dst_is_stdout ? "stdout" : dst_path, g_nthreads, COMPRESS_CHUNK / 1024);
 
   /* open files */
   src = fopen(src_path, "rb");
@@ -398,13 +409,17 @@ int compress_arch_threads(const char *dst_path, const char *src_path,
   }
   setvbuf(src, NULL, _IOFBF, SAR_ARCHIVE_BUF_SIZE);
 
-  dst = fopen(dst_path, "wb");
-  if (dst == NULL) {
-    perror(dst_path);
-    fclose(src);
-    return -1;
+  if (dst_is_stdout) {
+    dst = stdout;
+  } else {
+    dst = fopen(dst_path, "wb");
+    if (dst == NULL) {
+      perror(dst_path);
+      fclose(src);
+      return -1;
+    }
+    setvbuf(dst, NULL, _IOFBF, SAR_ARCHIVE_BUF_SIZE);
   }
-  setvbuf(dst, NULL, _IOFBF, SAR_ARCHIVE_BUF_SIZE);
 
   /* read all chunks */
   n_chunks = read_chunks(src, &chunks);
@@ -500,6 +515,6 @@ int compress_arch_threads(const char *dst_path, const char *src_path,
 cleanup:
   free(threads);
   free_chunks(chunks, n_chunks);
-  fclose(dst);
+  if (dst_is_stdout) fflush(dst); else fclose(dst);
   return result;
 }

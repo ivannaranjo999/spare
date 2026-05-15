@@ -32,7 +32,8 @@ extern int g_nthreads; /* Worker thread count, set by -j flag */
 #define COMPRESS_CHUNK (128 * 1024) /* 128 KB input per chunk */
 #define DICT_SIZE (32  * 1024) /* 32  KB dictionary */
 
-#define TMP_FILENAME "sar.tmp" /* Temporal file for in disk operations */
+#define TMP_FILENAME "sar.tmp" /* Temp file for in disk operations */
+#define TMP_STDIN_FILENAME "sar_stdin.tmp" /* Temp file to buffer stdin */
 
 /* File header struct for SAR archives */
 typedef struct {
@@ -126,6 +127,8 @@ int decompress_in_disk_and_run(const char *dst_path,
   int verbose) ;
 int compress_in_disk(const char *dst_path, const char *src_path, int verbose);
 int just_run(const char *archive_path, const char *mode, ActionFn action_fn, void *user_data);
+int stream_file_to_stdout(const char *path);
+int buffer_stdin_to_file(const char *dst_path);
 void usage(const char *name);
 void print_version (const char *name);
 

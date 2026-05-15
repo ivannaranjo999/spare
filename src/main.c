@@ -15,6 +15,9 @@ int main(int argc, char *argv[]){
   int i = 0;
   int verbose = 0;
   int nfiles = 0;
+  int use_zstream = 0;
+  int is_stream = 0;
+  int ret = 0;
   ArchiveFormat archive_format = ARCHIVE_DOESNOTEXIST;
 
   /* Code */
@@ -26,6 +29,9 @@ int main(int argc, char *argv[]){
     } else if(strcmp(argv[i], "-h") == 0){
       usage(argv[0]);
       return 0;
+    } else if(strcmp(argv[i], "-z") == 0){
+      use_zstream = 1;
+      argv[i] = NULL;
     } else if(strcmp(argv[i], "-j") == 0){
       argv[i] = NULL;
       if (i + 1 < argc && argv[i+1] != NULL && isdigit((unsigned char)argv[i+1][0])){
@@ -69,23 +75,44 @@ int main(int argc, char *argv[]){
     return 1;
   }
 
-  /* Detect if given SAR is compressed or not */
-  archive_format = detect_archive_format(archive_path, verbose);
+  is_stream = (strcmp(archive_path, "-") == 0);
+  if (is_stream) verbose = 0;
+
+  /* Detect archive format (skipped for stream: format declared by -z flag) */
+  if (is_stream) {
+    archive_format = use_zstream ? ARCHIVE_SGZ : ARCHIVE_SAR;
+  } else {
+    archive_format = detect_archive_format(archive_path, verbose);
+  }
 
   /* Action - p */
   if (strcmp(action, "p") == 0){
+    PackArgs a = { filepaths, nfiles, verbose };
     if (nfiles == 0) {
       fprintf(stderr, "error: 'p' requires at least one file\n");
       usage(argv[0]);
       return 1;
     }
 
-    PackArgs a = { filepaths, nfiles, verbose };
+    if (is_stream) {
+      if (g_nthreads == 1) {
+        /* Write to stdout */
+        return just_run("-", "wb", do_pack, &a) == 0 ? 0 : 1;
+      }
+      /* Multithreaded: mmap needs a real file, stream result to stdout */
+      if (pack_threads(TMP_FILENAME, filepaths, nfiles, verbose) != 0) return 1;
+      /* Write to stdout */
+      if (stream_file_to_stdout(TMP_FILENAME) != 0) {
+        remove(TMP_FILENAME);
+        return 1;
+      }
+      return remove(TMP_FILENAME) == 0 ? 0 : 1;
+    }
+
     if (g_nthreads == 1){
       return just_run(archive_path, "wb", do_pack, &a) == 0 ? 0 : 1;
     } else {
-      return pack_threads(archive_path, filepaths, nfiles, verbose)
-        == 0 ? 0 : 1;
+      return pack_threads(archive_path, filepaths, nfiles, verbose) == 0 ? 0 : 1;
     }
 
   /* Action - pz */
@@ -109,12 +136,26 @@ int main(int argc, char *argv[]){
       }
     }
 
+    /* compress_in_disk can write to stdout */
     compress_in_disk(archive_path, TMP_FILENAME, verbose);
     return remove(TMP_FILENAME) == 0 ? 0 : 1;
 
   /* Action - u */
   } else if (strcmp(action, "u") == 0){
     UnpackArgs a = { verbose };
+
+    if (is_stream) {
+      if (archive_format == ARCHIVE_SGZ) {
+        /* decompress_in_ram_and_run requires a real file */
+        if (buffer_stdin_to_file(TMP_FILENAME) != 0) return 1;
+        ret = decompress_in_ram_and_run(TMP_FILENAME, do_unpack, &a, verbose);
+        remove(TMP_FILENAME);
+        return ret == 0 ? 0 : 1;
+      }
+      /* Read from stdin */
+      return just_run("-", "rb", do_unpack, &a) == 0 ? 0 : 1;
+    }
+
     if (archive_format == ARCHIVE_SAR) {
       return just_run(archive_path, "rb", do_unpack, &a) == 0 ? 0 : 1;
     } else if (archive_format == ARCHIVE_SGZ) {
@@ -128,10 +169,24 @@ int main(int argc, char *argv[]){
 
   /* Action - l */
   } else if (strcmp(action, "l") == 0){
+
+    if (is_stream) {
+      if (archive_format == ARCHIVE_SGZ) {
+        /* list uses fseek, needs a seekable file, not a pipe */
+        if (buffer_stdin_to_file(TMP_STDIN_FILENAME) != 0) return 1;
+        ret = decompress_in_disk_and_run(TMP_FILENAME, TMP_STDIN_FILENAME,
+          "rb", do_list, NULL, verbose);
+        remove(TMP_STDIN_FILENAME);
+        remove(TMP_FILENAME);
+        return ret == 0 ? 0 : 1;
+      }
+      /* Read from stdin */
+      return just_run("-", "rb", do_list, NULL) == 0 ? 0 : 1;
+    }
+
     if (archive_format == ARCHIVE_SAR) {
       return just_run(archive_path, "rb", do_list, NULL) == 0 ? 0 : 1;
     } else if (archive_format == ARCHIVE_SGZ) {
-      /* fd in RAM cannot  */
       decompress_in_disk_and_run(TMP_FILENAME, archive_path, "rb", do_list,
         NULL, verbose);
       return remove(TMP_FILENAME) == 0 ? 0 : 1;
@@ -144,10 +199,25 @@ int main(int argc, char *argv[]){
   /* Action - g */
   } else if (strcmp(action, "g") == 0){
     GrabArgs a = { filepaths, nfiles, verbose };
+
+    if (is_stream) {
+      if (archive_format == ARCHIVE_SGZ) {
+        /* grab uses fseek, needs a seekable file, not a pipe */
+        if (buffer_stdin_to_file(TMP_STDIN_FILENAME) != 0) return 1;
+        ret = decompress_in_disk_and_run(TMP_FILENAME, TMP_STDIN_FILENAME,
+          "rb", do_grab, &a, verbose);
+        remove(TMP_STDIN_FILENAME);
+        remove(TMP_FILENAME);
+        return ret == 0 ? 0 : 1;
+      }
+      /* Read from stdin */
+      return just_run("-", "rb", do_grab, &a) == 0 ? 0 : 1;
+    }
+
     if (archive_format == ARCHIVE_SAR) {
       return just_run(archive_path, "rb", do_grab, &a) == 0 ? 0 : 1;
     } else if (archive_format == ARCHIVE_SGZ) {
-      decompress_in_disk_and_run(TMP_FILENAME, archive_path, "rb", 
+      decompress_in_disk_and_run(TMP_FILENAME, archive_path, "rb",
         do_grab, &a, verbose);
       return remove(TMP_FILENAME) == 0 ? 0 : 1;
     } else {
@@ -161,6 +231,10 @@ int main(int argc, char *argv[]){
     if (nfiles == 0) {
       fprintf(stderr, "error: 'i' requires at least one file\n");
       usage(argv[0]);
+      return 1;
+    }
+    if (is_stream) {
+      fprintf(stderr, "error: 'i' does not support stdin/stdout\n");
       return 1;
     }
     if (archive_format == ARCHIVE_SAR) {
