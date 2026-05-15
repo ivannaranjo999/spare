@@ -74,6 +74,34 @@ Ratios for [Linux kernel 7.0](https://cdn.kernel.org/pub/linux/kernel/v7.x/linux
 | Absolute values | 268216/1846928 | 274304/1846928 | 274224/1846928   |
 | Ratio           | 14.52%         | 14.85%         | 14.84%           |
 
+## Stdin / Stdout piping
+
+Use `-` as the archive path to read from stdin or write to stdout, enabling SAR to participate in shell pipelines without creating an archive file as the final destination.
+
+```sh
+sar p  - file1 file2 | ssh user@host "sar u -"        # copy files over SSH
+sar p  - file1 file2 | sha256sum                       # checksum without a file
+sar pz - file1 file2 | aws s3 cp - s3://bucket/b.sgz   # stream to object storage
+gpg -d secrets.sgz   | sar u - -z                      # decrypt and unpack
+```
+
+Use `-z` when reading a compressed archive from stdin so SAR knows the format without being able to inspect the file header.
+
+### Disk usage per operation
+
+| Command | Writes to disk |
+|---|---|
+| `sar p  -` *(single-threaded)* | zero |
+| `sar u  -` *(uncompressed)*    | zero |
+| `sar l  -` *(uncompressed)*    | zero |
+| `sar g  -` *(uncompressed)*    | zero |
+| `sar p  - -j N`                | `sar.tmp`: `pack_threads` requires mmap, which needs a seekable file |
+| `sar pz -`                     | `sar.tmp`: compression runs on the whole archive after packing, so the packed archive must exist first |
+| `sar u  - -z`                  | `sar.tmp`: decompressor needs to seek inside the gzip stream, a pipe is not seekable |
+| `sar l  - -z` / `sar g - -z`  | `sar.tmp` + `sar_stdin.tmp`: same reason as above, plus an extra file to buffer stdin |
+
+The zero-disk guarantee only holds end-to-end when both sides of the pipe use uncompressed single-threaded operations. For example, `sar pz - | ssh host "sar u - -z"` writes a temp file on **both** machines.
+
 ## The format
 SAR archives are just a flat binary file which is built as a concatenation of blocks, one per file. Each block contains a header and the file contents. The header is a fixed-size C struct storing everything needed to reconstruct the file.
 
