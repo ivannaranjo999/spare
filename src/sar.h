@@ -18,8 +18,8 @@
 #include <zlib.h>
 
 #define SAR_MAGIC "SAR" /* Magic string at start of every header */
-#define SAR_VERSION 1 /* format version */
-#define SAR_PRINT_VERSION "v1.1" /* release version */
+#define SAR_VERSION 2 /* format version */
+#define SAR_PRINT_VERSION "v2.0" /* release version */
 #define SAR_MAX_PATH 4096 /* max length of stored path */
 #define SAR_ARCHIVE_BUF_SIZE 1024*1024 /* 1MB read buffer */
 #define SAR_FILE_BUF_SIZE (64 * 1024) /* 64KB for individual file writes */
@@ -40,10 +40,9 @@ typedef struct {
   char     magic[3];
   uint8_t  version;
   char     filename[SAR_MAX_PATH];
-  uint64_t file_size;
   uint32_t mode;
+  uint64_t file_size;
   int64_t  mtime;
-  uint8_t  _pad[4]; /* Keeps sizeof(FileHeader) a multiple of 8 */
 } FileHeader;
 
 /* Struct for parallel compression */
