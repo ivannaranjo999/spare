@@ -119,6 +119,7 @@ int do_pack(FILE *fp, void *user_data);
 int do_pack_threads(FILE *fp, void *user_data);
 int do_insert(FILE *fp, void *user_data);
 ArchiveFormat detect_archive_format(const char *archive_path, int verbose);
+int check_archive_version(const char *path);
 int decompress_in_ram_and_run(const char *src_path, ActionFn action_fn,
     void *user_data, int verbose) ;
 int decompress_in_disk_and_run(const char *dst_path,

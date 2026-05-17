@@ -73,6 +73,46 @@ ArchiveFormat detect_archive_format(const char *archive_path, int verbose){
 }
 
 /* ----------------------------------------------------------------------------
+ * check_archive_version
+ *
+ * Opens path, reads the first FileHeader, and verifies that the magic and
+ * version match the compiled-in SAR_VERSION.
+ * Returns 0 on success, -1 on mismatch or read error.
+ * ------------------------------------------------------------------------- */
+int check_archive_version(const char *path){
+  /* Local variables */
+  FILE *f;
+  FileHeader h;
+  size_t n;
+
+  /* Code */
+  f = fopen(path, "rb");
+  if(f == NULL){
+    perror(path);
+    return -1;
+  }
+
+  n = fread(&h, sizeof(h), 1, f);
+  fclose(f);
+
+  if(n == 0){
+    fprintf(stderr, "error: could not read header from '%s'\n", path);
+    return -1;
+  }
+  if(memcmp(h.magic, SAR_MAGIC, 3) != 0){
+    fprintf(stderr, "error: bad magic in '%s' - not a SAR archive\n", path);
+    return -1;
+  }
+  if(h.version != SAR_VERSION){
+    fprintf(stderr, "error: archive '%s' uses format version %d, "
+            "this build requires version %d\n", path, h.version, SAR_VERSION);
+    return -1;
+  }
+
+  return 0;
+}
+
+/* ----------------------------------------------------------------------------
  * decompress_in_ram_and_run
  * 
  * Generic action function call with previous decompression step

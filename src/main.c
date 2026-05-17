@@ -83,6 +83,9 @@ int main(int argc, char *argv[]){
     archive_format = use_zstream ? ARCHIVE_SGZ : ARCHIVE_SAR;
   } else {
     archive_format = detect_archive_format(archive_path, verbose);
+    if ((archive_format == ARCHIVE_SAR) && 
+        (check_archive_version(archive_path) != 0))
+      return 1;
   }
 
   /* Action - p */

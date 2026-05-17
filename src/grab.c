@@ -44,6 +44,16 @@ int grab(FILE *archive, const char **filepaths, int count, int verbose){
       perror("fread header");
       result = -1;
     }
+  } else {
+    if(memcmp(header.magic, SAR_MAGIC, 3) != 0){
+      fprintf(stderr, "error: bad magic - not a SAR archive\n");
+      result = -1;
+      exitLoop = 1;
+    } else if(header.version != SAR_VERSION){
+      fprintf(stderr, "error: unsupported archive version %d\n", header.version);
+      result = -1;
+      exitLoop = 1;
+    }
   }
 
   /* Init mkdir cache */
@@ -85,6 +95,16 @@ int grab(FILE *archive, const char **filepaths, int count, int verbose){
         /* Error found */
         perror("fread header");
         status = -1;
+      }
+    } else {
+      if(memcmp(header.magic, SAR_MAGIC, 3) != 0){
+        fprintf(stderr, "error: bad magic - not a SAR archive\n");
+        result = -1;
+        exitLoop = 1;
+      } else if(header.version != SAR_VERSION){
+        fprintf(stderr, "error: unsupported archive version %d\n", header.version);
+        result = -1;
+        exitLoop = 1;
       }
     }
   }
