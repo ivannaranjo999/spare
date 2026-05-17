@@ -32,47 +32,36 @@ sync && echo 3 | sudo tee /proc/sys/vm/drop_caches
 
 Each command is ran **thrice** and the **median** is taken.
 
-### Speed matrix
-
-Command legend:
-| Operation         | tar     | sar    | sar -p    | sar -c    | sar -T    |
-|-------------------|---------|--------|-----------|-----------|-----------|
-| Pack              | tar cf  | sar p  | sar -p p  | -         | -         |
-| Pack and compress | tar czf | sar pz | sar -p pz | sar -c pz | sar -T pz |
-| Unpack            | tar xf  | sar u  | -         | -         | -         |
-| Unpack compressed | tar xzf | sar u  | -         | -         | -         |
+### Results
+**Real (wall-clock) time** for [Linux kernel 7.0](https://cdn.kernel.org/pub/linux/kernel/v7.x/linux-7.0.tar.xz)
+| Operation         | tar      | sar      | sar -j4 |
+|-------------------|----------|----------|-----|
+| Pack              | 18.885s  | 21.054s  | 14.452s  |
+| Pack and compress | 46.625s  | 75.355s  | 34.143s  |
+| Unpack            |  2.699s  |  2.827s  | -        |
+| Unpack compressed |  5.623s  |  7.945s  | -        |
 
 **User time** for [Linux kernel 7.0](https://cdn.kernel.org/pub/linux/kernel/v7.x/linux-7.0.tar.xz)
-| Operation         | tar     | sar    | sar -p    | sar -c    | sar -T    |
-|-------------------|---------|--------|-----------|-----------|-----------|
-| Pack              | 1.26s   | 1.92s  | 1.74s     | -         | -         |
-| Pack and compress | 45.80s  | 49.41s | 50.06s    | 72.63s    | 71.90s    |
-| Unpack            | 0.66s   | 1.37s  | -         | -         | -         |
-| Unpack compressed | 6.24s   | 8.97s  | -         | -         | -         |
+| Operation         | tar      | sar      | sar -j4 |
+|-------------------|----------|----------|-----|
+| Pack              |  1.077s  |  1.550s  |  1.874s  |
+| Pack and compress | 46.391s  | 53.048s  | 68.559s  |
+| Unpack            |  0.547s  |  0.627s  | -        |
+| Unpack compressed |  5.721s  |  8.173s  | -        |
 
 **Sys time** for [Linux kernel 7.0](https://cdn.kernel.org/pub/linux/kernel/v7.x/linux-7.0.tar.xz)
-| Operation         | tar     | sar    | sar -p    | sar -c    | sar -T    |
-|-------------------|---------|--------|-----------|-----------|-----------|
-| Pack              | 6.18s   | 6.62s  | 6.89s     | -         | -         |
-| Pack and compress | 4.43s   | 7.77s  | 7.23s     | 11.94s    | 10.58s    |
-| Unpack            | 3.73s   | 5.30s  | -         | -         | -         |
-| Unpack compressed | 4.40s   | 5.54s  | -         | -         | -         |
+| Operation         | tar      | sar      | sar -j4 |
+|-------------------|----------|----------|-----|
+| Pack              |  5.184s  |  5.913s  |  8.302s  |
+| Pack and compress |  4.606s  |  8.354s  | 10.608s  |
+| Unpack            |  2.105s  |  2.099s  | -        |
+| Unpack compressed |  2.841s  |  3.269s  | -        |
 
-**Total time** for [Linux kernel 7.0](https://cdn.kernel.org/pub/linux/kernel/v7.x/linux-7.0.tar.xz)
-| Operation         | tar     | sar    | sar -p    | sar -c    | sar -T    |
-|-------------------|---------|--------|-----------|-----------|-----------|
-| Pack              | 21.955s | 25.135s| 12.615s   | -         | -         |
-| Pack and compress | 46.237s | 71.21s | 58.670s   | 47.446s   | 34.487s   |
-| Unpack            | 8.010s  | 10.778s| -         | -         | -         |
-| Unpack compressed | 7.154s  | 9.909s | -         | -         | -         |
-
-### Compression matrix
-
-Ratios for [Linux kernel 7.0](https://cdn.kernel.org/pub/linux/kernel/v7.x/linux-7.0.tar.xz)
-|                 | tar czf        | sar pz         | sar -T pz        |
-|-----------------|----------------|----------------|------------------|
-| Absolute values | 268216/1846928 | 274304/1846928 | 274224/1846928   |
-| Ratio           | 14.52%         | 14.85%         | 14.84%           |
+**Compression ratios** for [Linux kernel 7.0](https://cdn.kernel.org/pub/linux/kernel/v7.x/linux-7.0.tar.xz)
+|  | tar czf | sar pz | sar -j4 pz |
+|---|---|---|---|
+| Absolute values | 265615532/1568397485 | 271562997/1568397485 | 271496378/1568397485 |
+| Ratio           | 16.94% | 17.31% | 17.31% |
 
 ## Stdin / Stdout piping
 
