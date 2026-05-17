@@ -38,6 +38,8 @@ typedef struct {
   uint8_t  version;
   char     filename[SAR_MAX_PATH];
   uint32_t mode;
+  uint32_t uid;
+  uint32_t gid;
   uint64_t file_size;
   int64_t  mtime;
 } FileHeader;

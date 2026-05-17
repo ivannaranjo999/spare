@@ -10,6 +10,8 @@ typedef struct {
   uint8_t *dest; /* pointer into mmap region for this file */
   uint64_t file_size;
   uint32_t mode;
+  uint32_t uid;
+  uint32_t gid;
   int64_t mtime;
 } WorkItem;
  
@@ -20,6 +22,29 @@ typedef struct {
     int       result;       /* thread writes 0 or -1 here             */
 } ThreadArgs;
  
+/* ----------------------------------------------------------------------------
+ * fill_workitem
+ *
+ * Zero and populate a WorkItem. Pass NULL for linkpath on regular files.
+ * ------------------------------------------------------------------------- */
+static void fill_workitem(WorkItem *w, const char *filepath, const char *linkpath,
+                          uint64_t file_size, uint32_t mode,
+                          uint32_t uid, uint32_t gid, int64_t mtime){
+  memset(w, 0, sizeof(*w));
+  strncpy(w->filepath, filepath, SAR_MAX_PATH - 1);
+  w->filepath[SAR_MAX_PATH - 1] = '\0';
+  if (linkpath != NULL) {
+    strncpy(w->linkpath, linkpath, SAR_MAX_PATH - 1);
+    w->linkpath[SAR_MAX_PATH - 1] = '\0';
+  }
+  w->file_size = file_size;
+  w->mode = mode;
+  w->uid = uid;
+  w->gid = gid;
+  w->mtime = mtime;
+  w->dest = NULL;
+}
+
 /* ----------------------------------------------------------------------------
  * collect_files
  *
@@ -66,16 +91,9 @@ static int collect_files(const char *filepath, WorkItem **items, int *count, int
     }
 
     WorkItem *w = &(*items)[*count];
-    memset(w, 0, sizeof(*w));
-    strncpy(w->filepath, filepath, SAR_MAX_PATH - 1);
-    w->filepath[SAR_MAX_PATH - 1] = '\0';
-    strncpy(w->linkpath, linkbuf, SAR_MAX_PATH - 1);
-    w->linkpath[SAR_MAX_PATH - 1] = '\0';
-    w->file_size = (uint64_t)linklen;
-    w->mode      = (uint32_t)st.st_mode;
-    w->mtime     = (int64_t)st.st_mtime;
-    w->dest      = NULL;
-
+    fill_workitem(w, filepath, linkbuf, (uint64_t)linklen,
+      (uint32_t)st.st_mode, (uint32_t)st.st_uid, (uint32_t)st.st_gid, 
+      (int64_t)st.st_mtime);
     (*count)++;
     return 0;
   }
@@ -124,14 +142,9 @@ static int collect_files(const char *filepath, WorkItem **items, int *count, int
 
   /* fill in the work item, dest is assigned later by assign_offsets */
   WorkItem *w = &(*items)[*count];
-  memset(w, 0, sizeof(*w));
-  strncpy(w->filepath, filepath, SAR_MAX_PATH - 1);
-  w->filepath[SAR_MAX_PATH - 1] = '\0';
-  w->file_size = (uint64_t)st.st_size;
-  w->mode      = (uint32_t)st.st_mode;
-  w->mtime     = (int64_t)st.st_mtime;
-  w->dest      = NULL;
-
+  fill_workitem(w, filepath, NULL, (uint64_t)st.st_size,
+    (uint32_t)st.st_mode, (uint32_t)st.st_uid, (uint32_t)st.st_gid, 
+    (int64_t)st.st_mtime);
   (*count)++;
   return 0;
 }
@@ -153,6 +166,27 @@ static uint64_t assign_offsets(WorkItem *items, int count, uint8_t *mmap_base) {
 }
  
 /* ----------------------------------------------------------------------------
+ * fill_header
+ *
+ * Zero and populate a FileHeader. Centralises the field assignments that
+ * would otherwise be duplicated in write_item and pack_file.
+ * ------------------------------------------------------------------------- */
+static void fill_header(FileHeader *h, const char *filepath,
+    uint64_t file_size, uint32_t mode, uint32_t uid, uint32_t gid, 
+    int64_t mtime){
+  memset(h, 0, sizeof(*h));
+  memcpy(h->magic, SAR_MAGIC, 3);
+  h->version = SAR_VERSION;
+  h->file_size = file_size;
+  h->mode = mode;
+  h->uid = uid;
+  h->gid = gid;
+  h->mtime = mtime;
+  strncpy(h->filename, filepath, SAR_MAX_PATH - 1);
+  h->filename[SAR_MAX_PATH - 1] = '\0';
+}
+
+/* ----------------------------------------------------------------------------
  *  write_item
  *
  *  Write one WorkItem (header + file data) directly into its assigned
@@ -162,19 +196,13 @@ static uint64_t assign_offsets(WorkItem *items, int count, uint8_t *mmap_base) {
  
 static int write_item(const WorkItem *w, int verbose){
   /* Local variables */
-  /* write header directly into mmap destination */
   FileHeader *header = (FileHeader *)w->dest;
-  memset(header, 0, sizeof(FileHeader));
-  memcpy(header->magic, SAR_MAGIC, 3);
-  header->version = SAR_VERSION;
-  header->file_size = w->file_size;
-  header->mode = w->mode;
-  header->mtime = w->mtime;
-  strncpy(header->filename, w->filepath, SAR_MAX_PATH - 1);
-  header->filename[SAR_MAX_PATH - 1] = '\0';
   uint8_t *data_dest;
 
   /* Code */
+  fill_header(header, w->filepath, w->file_size, w->mode, w->uid, w->gid, 
+    w->mtime);
+
   data_dest = w->dest + sizeof(FileHeader);
 
   /* If symlink, do not fopen anything */
@@ -419,16 +447,10 @@ int pack_file(FILE *archive, const char *filepath, int verbose){
     }
     linkbuf[linklen] = '\0';
  
-    /* Fill header */
-    memset(&header, 0, sizeof(header));
-    memcpy(header.magic, SAR_MAGIC, 3);
-    header.version = SAR_VERSION;
-    header.file_size = (uint64_t)linklen;
-    header.mode = (uint32_t)st.st_mode;
-    header.mtime = (int64_t)st.st_mtime;
-    strncpy(header.filename, filepath, SAR_MAX_PATH - 1);
-    header.filename[SAR_MAX_PATH - 1] = '\0';
- 
+    fill_header(&header, filepath, (uint64_t)linklen,
+      (uint32_t)st.st_mode, (uint32_t)st.st_uid, (uint32_t)st.st_gid, 
+      (int64_t)st.st_mtime);
+
     /* Write header */
     if (fwrite(&header, sizeof(header), 1, archive) != 1) {
       fprintf(stderr, "error: failed to write header for '%s'\n", filepath);
@@ -488,15 +510,9 @@ int pack_file(FILE *archive, const char *filepath, int verbose){
   }
   setvbuf(src, NULL, _IOFBF, SAR_FILE_BUF_SIZE);
 
-  /* Fill header info */
-  memset(&header, 0, sizeof(header));
-  memcpy(header.magic, SAR_MAGIC, 3);
-  header.version = SAR_VERSION;
-  header.file_size = (uint64_t)st.st_size;
-  header.mode = (uint32_t)st.st_mode;
-  header.mtime = (int64_t)st.st_mtime;
-  strncpy(header.filename, filepath, SAR_MAX_PATH - 1);
-  header.filename[SAR_MAX_PATH - 1] = '\0';
+  fill_header(&header, filepath, (uint64_t)st.st_size,
+    (uint32_t)st.st_mode, (uint32_t)st.st_uid,
+    (uint32_t)st.st_gid, (int64_t)st.st_mtime);
 
   /* Write header to archive */
   if (fwrite(&header, sizeof(header), 1, archive) != 1){

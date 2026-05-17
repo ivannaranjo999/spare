@@ -30,6 +30,7 @@ clean:
 veryclean:
 	rm -rf build
 	rm -f $(TARGET)
+	rm -rf bench/linux* bench/tmp
 
 test: $(TARGET)
 	bash test/run_all.sh

@@ -217,6 +217,11 @@ int unpack_file(FILE *archive, DirCache *cache , int verbose){
       return -1;
     }
 
+    /* Restore ownership; EPERM is expected when not root */
+    if (lchown(header.filename, (uid_t)header.uid, (gid_t)header.gid) != 0
+        && errno != EPERM)
+      perror("lchown");
+
     if (verbose)
       printf("unpacked: '%s' -> '%s'\n", header.filename, linkbuf);
 
@@ -260,6 +265,13 @@ int unpack_file(FILE *archive, DirCache *cache , int verbose){
   }
 
   fclose(dst);
+
+  /* Restore ownership before chmod: lchown can clear setuid/setgid bits,
+   * so chmod must come after to restore the full mode. EPERM is expected
+   * when not root. */
+  if (lchown(header.filename, (uid_t)header.uid, (gid_t)header.gid) != 0
+      && errno != EPERM)
+    perror("lchown");
 
   /* Restore permissions */
   if(chmod(header.filename, (mode_t)header.mode) != 0){
