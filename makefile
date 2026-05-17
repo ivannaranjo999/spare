@@ -31,4 +31,7 @@ veryclean:
 	rm -rf build
 	rm -f $(TARGET)
 
-.PHONY: all clean install uninstall veryclean
+test: $(TARGET)
+	bash test/run_all.sh
+
+.PHONY: all clean install uninstall veryclean test
