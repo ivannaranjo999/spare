@@ -4,7 +4,7 @@ Simple ARchiver, SAR, is a C tool that is able to **archive** a list of files an
 - 🌲 Listing the contents of a `.sar|.sgz` file.
 - 🌳 Grabbing specific files or directories from a `.sar|.sgz` file.
 - 🌴 Inserting specific files or directories to a `.sar|.sgz` file.
-- 🐷 Flags for multithreading in packing and compression (pigz style!).
+- 🌻 Flags for multithreading in packing and compression.
 
 The tool is used as follows:
 
@@ -12,11 +12,11 @@ The tool is used as follows:
 Usage:
 Actions:
   sar p   <archive.sar> <file1..fileN>       Pack given files or folders to a SAR archive.
-  sar pz  <archive.sgz> <file1..fileN>       Pack given files or folders to a SAR archive and compress it.
-  sar u   <archive.sar|.sgz>                 Unpack SAR archive.
-  sar l   <archive.sar|.sgz>                 List files contained in a SAR archive.
-  sar g   <archive.sar|.sgz> <file1..fileN>  Grab specific files contained in a SAR archive.
-  sar i   <archive.sar|.sgz> <file1..fileN>  Insert specific files to a SAR archive.
+  sar pz  <archive.szt> <file1..fileN>       Pack given files or folders to a SAR archive and compress it.
+  sar u   <archive.sar|.szt>                 Unpack SAR archive.
+  sar l   <archive.sar|.szt>                 List files contained in a SAR archive.
+  sar g   <archive.sar|.szt> <file1..fileN>  Grab specific files contained in a SAR archive.
+  sar i   <archive.sar|.szt> <file1..fileN>  Insert specific files to a SAR archive.
 Flags:
   -v verbose output
   -p enable threading for packing.
@@ -36,32 +36,32 @@ Each command is ran **thrice** and the **median** is taken.
 **Real (wall-clock) time** for [Linux kernel 7.0](https://cdn.kernel.org/pub/linux/kernel/v7.x/linux-7.0.tar.xz)
 | Operation         | tar      | sar      | sar -j4 |
 |-------------------|----------|----------|-----|
-| Pack              | 18.885s  | 21.054s  | 14.452s  |
-| Pack and compress | 46.625s  | 75.355s  | 34.143s  |
-| Unpack            |  2.699s  |  2.827s  | -        |
-| Unpack compressed |  5.623s  |  7.945s  | -        |
+| Pack              | 19.658s  | 21.499s  | 13.889s  |
+| Pack and compress | 47.003s  | 30.079s  | 17.650s  |
+| Unpack            |  2.691s  |  2.843s  | -        |
+| Unpack compressed |  5.332s  |  4.522s  | -        |
 
 **User time** for [Linux kernel 7.0](https://cdn.kernel.org/pub/linux/kernel/v7.x/linux-7.0.tar.xz)
 | Operation         | tar      | sar      | sar -j4 |
 |-------------------|----------|----------|-----|
-| Pack              |  1.077s  |  1.550s  |  1.874s  |
-| Pack and compress | 46.391s  | 53.048s  | 68.559s  |
-| Unpack            |  0.547s  |  0.627s  | -        |
-| Unpack compressed |  5.721s  |  8.173s  | -        |
+| Pack              |  1.070s  |  1.564s  |  1.764s  |
+| Pack and compress | 46.568s  |  9.110s  | 24.185s  |
+| Unpack            |  0.524s  |  0.660s  | -        |
+| Unpack compressed |  5.401s  |  3.056s  | -        |
 
 **Sys time** for [Linux kernel 7.0](https://cdn.kernel.org/pub/linux/kernel/v7.x/linux-7.0.tar.xz)
 | Operation         | tar      | sar      | sar -j4 |
 |-------------------|----------|----------|-----|
-| Pack              |  5.184s  |  5.913s  |  8.302s  |
-| Pack and compress |  4.606s  |  8.354s  | 10.608s  |
-| Unpack            |  2.105s  |  2.099s  | -        |
-| Unpack compressed |  2.841s  |  3.269s  | -        |
+| Pack              |  5.563s  |  6.054s  |  7.873s  |
+| Pack and compress |  4.629s  |  7.626s  |  7.805s  |
+| Unpack            |  2.118s  |  2.070s  | -        |
+| Unpack compressed |  2.708s  |  2.927s  | -        |
 
 **Compression ratios** for [Linux kernel 7.0](https://cdn.kernel.org/pub/linux/kernel/v7.x/linux-7.0.tar.xz)
 |  | tar czf | sar pz | sar -j4 pz |
 |---|---|---|---|
-| Absolute values | 265615532/1568397485 | 271562997/1568397485 | 271496378/1568397485 |
-| Ratio           | 16.94% | 17.31% | 17.31% |
+| Absolute values | 265615532/1568397485 | 241568771/1568397485 | 241278130/1568397485 |
+| Ratio           | 16.94% | 15.40% | 15.38% |
 
 ## Stdin / Stdout piping
 
@@ -70,8 +70,8 @@ Use `-` as the archive path to read from stdin or write to stdout, enabling SAR 
 ```sh
 sar p  - file1 file2 | ssh user@host "sar u -"        # copy files over SSH
 sar p  - file1 file2 | sha256sum                       # checksum without a file
-sar pz - file1 file2 | aws s3 cp - s3://bucket/b.sgz   # stream to object storage
-gpg -d secrets.sgz   | sar u - -z                      # decrypt and unpack
+sar pz - file1 file2 | aws s3 cp - s3://bucket/b.szt   # stream to object storage
+gpg -d secrets.szt   | sar u - -z                      # decrypt and unpack
 ```
 
 Use `-z` when reading a compressed archive from stdin so SAR knows the format without being able to inspect the file header.
@@ -86,8 +86,8 @@ Use `-z` when reading a compressed archive from stdin so SAR knows the format wi
 | `sar g  -` *(uncompressed)*    | zero |
 | `sar p  - -j N`                | `sar.tmp`: `pack_threads` requires mmap, which needs a seekable file |
 | `sar pz -`                     | `sar.tmp`: compression runs on the whole archive after packing, so the packed archive must exist first |
-| `sar u  - -z`                  | `sar.tmp`: decompressor needs to seek inside the gzip stream, a pipe is not seekable |
-| `sar l  - -z` / `sar g - -z`  | `sar.tmp` + `sar_stdin.tmp`: same reason as above, plus an extra file to buffer stdin |
+| `sar u  - -z`                  | `sar.tmp`: the decompressor requires a seekable file path, not a pipe — stdin is buffered first |
+| `sar l  - -z` / `sar g - -z`  | `sar.tmp` + `sar_stdin.tmp`: decompressed archive written to disk (list/grab use fseek), plus stdin buffered |
 
 The zero-disk guarantee only holds end-to-end when both sides of the pipe use uncompressed single-threaded operations. For example, `sar pz - | ssh host "sar u - -z"` writes a temp file on **both** machines.
 
@@ -99,15 +99,15 @@ SAR archives are just a flat binary file which is built as a concatenation of bl
 ```
 
 ## Compression
-When invoked with `pz`/`u`, SAR compresses and decompresses the entire archive using **zlib's deflate/inflate** algorithm. The result is a **gzip envelope** with the same format produced by standard `gzip` tool.
+When invoked with `pz`/`u`, SAR compresses and decompresses the entire archive using **zstd**. The output is a standard `.szt` file (a valid zstd stream readable by `zstd -d`).
 
-Compression is applied to the **whole archive** after packing, not per file. This ensures better compression that compressing each file individually.
+Compression is applied to the **whole archive** after packing, not per file. Multi-threading (`-j N`) is passed directly to zstd's built-in worker pool, replacing the manual pigz-style approach used with gzip.
 
 Only `p` action has its `pz` alternative since SAR is able to detect in the rest of actions if the provided archive is compressed or not.
 
 ## Building & Installing
 List of dependencies:
-- zlib
+- zstd
 
 To build binary, run:
 ```
