@@ -80,7 +80,7 @@ int main(int argc, char *argv[]){
 
   /* Detect archive format (skipped for stream: format declared by -z flag) */
   if (is_stream) {
-    archive_format = use_zstream ? ARCHIVE_SGZ : ARCHIVE_SAR;
+    archive_format = use_zstream ? ARCHIVE_SZT : ARCHIVE_SAR;
   } else {
     archive_format = detect_archive_format(archive_path, verbose);
     if ((archive_format == ARCHIVE_SAR) && 
@@ -139,8 +139,7 @@ int main(int argc, char *argv[]){
       }
     }
 
-    /* compress_in_disk can write to stdout */
-    compress_in_disk(archive_path, TMP_FILENAME, verbose);
+    compress_arch(archive_path, TMP_FILENAME, verbose);
     return remove(TMP_FILENAME) == 0 ? 0 : 1;
 
   /* Action - u */
@@ -148,7 +147,7 @@ int main(int argc, char *argv[]){
     UnpackArgs a = { verbose };
 
     if (is_stream) {
-      if (archive_format == ARCHIVE_SGZ) {
+      if (archive_format == ARCHIVE_SZT) {
         /* decompress_in_ram_and_run requires a real file */
         if (buffer_stdin_to_file(TMP_FILENAME) != 0) return 1;
         ret = decompress_in_ram_and_run(TMP_FILENAME, do_unpack, &a, verbose);
@@ -161,7 +160,7 @@ int main(int argc, char *argv[]){
 
     if (archive_format == ARCHIVE_SAR) {
       return just_run(archive_path, "rb", do_unpack, &a) == 0 ? 0 : 1;
-    } else if (archive_format == ARCHIVE_SGZ) {
+    } else if (archive_format == ARCHIVE_SZT) {
       return decompress_in_ram_and_run(archive_path, do_unpack, &a, verbose)
         == 0 ? 0 : 1;
     } else {
@@ -174,7 +173,7 @@ int main(int argc, char *argv[]){
   } else if (strcmp(action, "l") == 0){
 
     if (is_stream) {
-      if (archive_format == ARCHIVE_SGZ) {
+      if (archive_format == ARCHIVE_SZT) {
         /* list uses fseek, needs a seekable file, not a pipe */
         if (buffer_stdin_to_file(TMP_STDIN_FILENAME) != 0) return 1;
         ret = decompress_in_disk_and_run(TMP_FILENAME, TMP_STDIN_FILENAME,
@@ -189,7 +188,7 @@ int main(int argc, char *argv[]){
 
     if (archive_format == ARCHIVE_SAR) {
       return just_run(archive_path, "rb", do_list, NULL) == 0 ? 0 : 1;
-    } else if (archive_format == ARCHIVE_SGZ) {
+    } else if (archive_format == ARCHIVE_SZT) {
       decompress_in_disk_and_run(TMP_FILENAME, archive_path, "rb", do_list,
         NULL, verbose);
       return remove(TMP_FILENAME) == 0 ? 0 : 1;
@@ -204,7 +203,7 @@ int main(int argc, char *argv[]){
     GrabArgs a = { filepaths, nfiles, verbose };
 
     if (is_stream) {
-      if (archive_format == ARCHIVE_SGZ) {
+      if (archive_format == ARCHIVE_SZT) {
         /* grab uses fseek, needs a seekable file, not a pipe */
         if (buffer_stdin_to_file(TMP_STDIN_FILENAME) != 0) return 1;
         ret = decompress_in_disk_and_run(TMP_FILENAME, TMP_STDIN_FILENAME,
@@ -219,7 +218,7 @@ int main(int argc, char *argv[]){
 
     if (archive_format == ARCHIVE_SAR) {
       return just_run(archive_path, "rb", do_grab, &a) == 0 ? 0 : 1;
-    } else if (archive_format == ARCHIVE_SGZ) {
+    } else if (archive_format == ARCHIVE_SZT) {
       decompress_in_disk_and_run(TMP_FILENAME, archive_path, "rb",
         do_grab, &a, verbose);
       return remove(TMP_FILENAME) == 0 ? 0 : 1;
@@ -243,11 +242,11 @@ int main(int argc, char *argv[]){
     if (archive_format == ARCHIVE_SAR) {
       PackArgs a = { filepaths, nfiles, verbose };
       return just_run(archive_path, "ab", do_pack, &a) == 0 ? 0 : 1;
-    } else if (archive_format == ARCHIVE_SGZ) {
+    } else if (archive_format == ARCHIVE_SZT) {
       InsertArgs a = { filepaths, nfiles, verbose };
       decompress_in_disk_and_run(TMP_FILENAME, archive_path, "ab",
         do_insert, &a, verbose);
-      compress_in_disk(archive_path, TMP_FILENAME, verbose);
+      compress_arch(archive_path, TMP_FILENAME, verbose);
       return remove(TMP_FILENAME) == 0 ? 0 : 1;
     } else {
       fprintf(stderr, "error: non existing file or corrupt format for '%s'\n",

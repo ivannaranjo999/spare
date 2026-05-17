@@ -41,7 +41,7 @@ int do_insert(FILE *fp, void *user_data){
  * ------------------------------------------------------------------------- */
 ArchiveFormat detect_archive_format(const char *archive_path, int verbose){
   /* Local variables */
-  unsigned char magic[3];
+  unsigned char magic[4];
   FILE *archive;
   size_t n = 0;
 
@@ -56,14 +56,15 @@ ArchiveFormat detect_archive_format(const char *archive_path, int verbose){
 
   if (n < 2) return ARCHIVE_UNKNOWN;
 
-  /* gzip magic is 0x1F 0x8B */
-  if (magic[0] == 0x1F && magic[1] == 0x8B){
-    if (verbose) printf("'%s' detected as compressed SAR archive\n", 
+  /* zstd magic: 0xFD2FB528 stored little-endian = 28 B5 2F FD */
+  if (n >= 4 && magic[0] == 0x28 && magic[1] == 0xB5 &&
+      magic[2] == 0x2F && magic[3] == 0xFD) {
+    if (verbose) printf("'%s' detected as compressed SAR archive\n",
                         archive_path);
-    return ARCHIVE_SGZ;
+    return ARCHIVE_SZT;
   }
-    
-  if (n >=3 && memcmp(magic, SAR_MAGIC, 3) == 0){
+
+  if (n >= 3 && memcmp(magic, SAR_MAGIC, 3) == 0){
     if (verbose) printf("'%s' detected as SAR archive\n", archive_path);
     return ARCHIVE_SAR;
   }
@@ -176,28 +177,6 @@ int decompress_in_disk_and_run(const char *dst_path, const char *src_path,
   fclose(fp);
  
   return ret;
-}
-
-/* ----------------------------------------------------------------------------
- * compress_in_disk
- *
- * Calls compress_arch or compress_arch_threads
- * Returns 0 on success, -1 on error.
- * ------------------------------------------------------------------------- */
-int compress_in_disk(const char *dst_path, const char *src_path, int verbose){
-  if (g_nthreads == 1){
-    if (compress_arch(dst_path, src_path, verbose) != 0) {
-      fprintf(stderr, "error: compress_arch failed\n");
-      return 1;
-    }
-  } else {
-    if (compress_arch_threads(dst_path, src_path, verbose) != 0) {
-      fprintf(stderr, "error: compress_arch_threads failed\n");
-      return 1;
-    }
-  }
-
-  return 0;
 }
 
 /* ----------------------------------------------------------------------------
@@ -326,20 +305,20 @@ void usage(const char *name){
   fprintf(stderr, "Usage:\n");
   fprintf(stderr, "Actions:\n");
   fprintf(stderr, "  %s p   <archive.sar> <file1..fileN>       Pack given files or folders to a SAR archive.\n", name);
-  fprintf(stderr, "  %s pz  <archive.sgz> <file1..fileN>       Pack given files or folders to a SAR archive and compress it.\n", name);
-  fprintf(stderr, "  %s u   <archive.sar|.sgz>                 Unpack SAR archive.\n", name);
-  fprintf(stderr, "  %s l   <archive.sar|.sgz>                 List files contained in a SAR archive.\n", name);
-  fprintf(stderr, "  %s g   <archive.sar|.sgz> <file1..fileN>  Grab specific files contained in a SAR archive.\n", name);
-  fprintf(stderr, "  %s i   <archive.sar|.sgz> <file1..fileN>  Insert specific files to a SAR archive.\n", name);
+  fprintf(stderr, "  %s pz  <archive.szt> <file1..fileN>       Pack given files or folders to a SAR archive and compress it.\n", name);
+  fprintf(stderr, "  %s u   <archive.sar|.szt>                 Unpack SAR archive.\n", name);
+  fprintf(stderr, "  %s l   <archive.sar|.szt>                 List files contained in a SAR archive.\n", name);
+  fprintf(stderr, "  %s g   <archive.sar|.szt> <file1..fileN>  Grab specific files contained in a SAR archive.\n", name);
+  fprintf(stderr, "  %s i   <archive.sar|.szt> <file1..fileN>  Insert specific files to a SAR archive.\n", name);
   fprintf(stderr, "Flags:\n");
   fprintf(stderr, "  -h         prints this information.\n");
   fprintf(stderr, "  -v         verbose output.\n");
   fprintf(stderr, "  -j [N]     use N threads for packing and compression (default: all cores).\n");
-  fprintf(stderr, "  -z         when archive path is '-', treat stdin as compressed (SGZ).\n");
+  fprintf(stderr, "  -z         when archive path is '-', treat stdin as compressed (SZT).\n");
   fprintf(stderr, "\nPipeline:\n");
   fprintf(stderr, "  Use '-' as archive path to read/write stdin/stdout.\n");
   fprintf(stderr, "  %s p  - <file1..fileN>  | %s u  -       Pack and extract via pipe.\n", name, name);
-  fprintf(stderr, "  %s pz - <file1..fileN>  | %s u  - -z    Pack compressed and extract via pipe.\n", name, name);
+  fprintf(stderr, "  %s pz - <file1..fileN>  | %s u  - -z    Pack compressed (zstd) and extract via pipe.\n", name, name);
 }
 
 /* ----------------------------------------------------------------------------

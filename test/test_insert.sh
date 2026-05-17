@@ -47,17 +47,17 @@ out="$WORK/t4" && mkdir "$out"
 check "i dir: extra/e.txt" "$(cat "$WORK/extra/e.txt")" "$(cat "$out/extra/e.txt")"
 
 # --- 5: i adds file to SGZ, l confirms it is listed ---
-(cd "$WORK" && "$SAR" pz archive.sgz src)
-(cd "$WORK" && "$SAR" i archive.sgz new.txt)
-listing=$(cd "$WORK" && "$SAR" l archive.sgz)
-check "i sgz: new file listed" "$(echo "$listing" | grep -c 'new.txt')" "1"
+(cd "$WORK" && "$SAR" pz archive.szt src)
+(cd "$WORK" && "$SAR" i archive.szt new.txt)
+listing=$(cd "$WORK" && "$SAR" l archive.szt)
+check "i szt: new file listed" "$(echo "$listing" | grep -c 'new.txt')" "1"
 
 # --- 6: i on SGZ, u can extract inserted file ---
 out="$WORK/t6" && mkdir "$out"
-(cd "$WORK" && "$SAR" pz t6.sgz src)
-(cd "$WORK" && "$SAR" i t6.sgz new.txt)
-(cd "$out"  && "$SAR" u "$WORK/t6.sgz")
-check "i sgz: inserted content" "$(cat "$WORK/new.txt")" "$(cat "$out/new.txt")"
+(cd "$WORK" && "$SAR" pz t6.szt src)
+(cd "$WORK" && "$SAR" i t6.szt new.txt)
+(cd "$out"  && "$SAR" u "$WORK/t6.szt")
+check "i szt: inserted content" "$(cat "$WORK/new.txt")" "$(cat "$out/new.txt")"
 
 # --- 7: i rejects pipe mode ---
 err=$(cd "$WORK" && "$SAR" i - new.txt 2>&1)

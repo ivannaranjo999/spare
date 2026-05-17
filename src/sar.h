@@ -15,7 +15,7 @@
 #include <utime.h>
 #include <dirent.h>
 #include <pthread.h>
-#include <zlib.h>
+#include <zstd.h>
 
 #define SAR_MAGIC "SAR" /* Magic string at start of every header */
 #define SAR_VERSION 2 /* format version */
@@ -28,9 +28,6 @@ extern int g_nthreads; /* Worker thread count, set by -j flag */
 
 #define COPY_BUFFER_SIZE_SMALL (4 * 1024) /* 4KB for recursing calls */
 #define COPY_BUFFER_SIZE (64 * 1024) /* 64KB for not recursing calls */
-#define ZCHUNK 16384
-#define COMPRESS_CHUNK (128 * 1024) /* 128 KB input per chunk */
-#define DICT_SIZE (32  * 1024) /* 32  KB dictionary */
 
 #define TMP_FILENAME "sar.tmp" /* Temp file for in disk operations */
 #define TMP_STDIN_FILENAME "sar_stdin.tmp" /* Temp file to buffer stdin */
@@ -44,19 +41,6 @@ typedef struct {
   uint64_t file_size;
   int64_t  mtime;
 } FileHeader;
-
-/* Struct for parallel compression */
-typedef struct {
-  uint8_t *input;    /* raw chunk data to compress */
-  size_t input_len;  /* bytes in this chunk */
-  uint8_t *dict;     /* last DICT_SIZE bytes of prev chunk raw */
-  size_t dict_len;   /* 0 for first chunk */
-  uint8_t *output;   /* compressed raw deflate output */
-  size_t output_cap; /* allocated size of output buffer */
-  size_t output_len; /* bytes written by thread */
-  int is_last;       /* 1 if this is the final chunk */
-  int result;        /* 0 = ok, -1 = error */
-} CompressChunk;
 
 /* Struct for decompression without using disk */
 typedef struct{
@@ -77,7 +61,7 @@ typedef enum {
   ARCHIVE_DOESNOTEXIST,
   ARCHIVE_UNKNOWN,
   ARCHIVE_SAR,
-  ARCHIVE_SGZ
+  ARCHIVE_SZT
 } ArchiveFormat;
 
 typedef enum {
@@ -92,7 +76,6 @@ int pack_threads(const char *archive_path, const char **filepaths, int count, in
 int unpack(FILE *archive_path, int verbose);
 int unpack_file(FILE *archive, DirCache *cache, int verbose);
 int compress_arch(const char *dst_path, const char *src_path, int verbose);
-int compress_arch_threads(const char *dst_path, const char *src_path, int verbose);
 int decompress_arch(const char *dst_path, const char *src_path, int verbose);
 int decompress_arch_ram(FILE **dst_fp, const char *src_path, 
                         pthread_t *dst_thread, DecompressRamArgs *dst_args, 
@@ -125,7 +108,6 @@ int decompress_in_ram_and_run(const char *src_path, ActionFn action_fn,
 int decompress_in_disk_and_run(const char *dst_path,
   const char *src_path, const char *mode, ActionFn action_fn, void *user_data,
   int verbose) ;
-int compress_in_disk(const char *dst_path, const char *src_path, int verbose);
 int just_run(const char *archive_path, const char *mode, ActionFn action_fn, void *user_data);
 int stream_file_to_stdout(const char *path);
 int buffer_stdin_to_file(const char *dst_path);

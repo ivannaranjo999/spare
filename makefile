@@ -1,6 +1,6 @@
 CC     = gcc
 CFLAGS = -Wall -Wextra -std=gnu11 -g
-LIBS   = -lz -pthread
+LIBS   = -lzstd -pthread
 SRC    = src/main.c src/pack.c src/unpack.c src/grab.c src/list.c src/insert.c \
          src/compression.c src/decompression.c src/helpers.c
 OBJ    = $(patsubst src/%.c, build/%.o, $(SRC))

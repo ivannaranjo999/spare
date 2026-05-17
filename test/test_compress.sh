@@ -23,58 +23,58 @@ echo "third file"  > "$WORK/src/c.txt"
 
 # --- 1: pz + u single-thread roundtrip ---
 out="$WORK/t1" && mkdir "$out"
-(cd "$WORK" && "$SAR" pz t1.sgz src)
-(cd "$out"  && "$SAR" u "$WORK/t1.sgz")
+(cd "$WORK" && "$SAR" pz t1.szt src)
+(cd "$out"  && "$SAR" u "$WORK/t1.szt")
 check "pz+u: a.txt"        "$(cat "$WORK/src/a.txt")"        "$(cat "$out/src/a.txt")"
 check "pz+u: subdir/b.txt" "$(cat "$WORK/src/subdir/b.txt")" "$(cat "$out/src/subdir/b.txt")"
 check "pz+u: c.txt"        "$(cat "$WORK/src/c.txt")"        "$(cat "$out/src/c.txt")"
 
 # --- 2: pz + u multi-thread roundtrip ---
 out="$WORK/t2" && mkdir "$out"
-(cd "$WORK" && "$SAR" -j 4 pz t2.sgz src)
-(cd "$out"  && "$SAR" u "$WORK/t2.sgz")
+(cd "$WORK" && "$SAR" -j 4 pz t2.szt src)
+(cd "$out"  && "$SAR" u "$WORK/t2.szt")
 check "pz+u multi: a.txt"        "$(cat "$WORK/src/a.txt")"        "$(cat "$out/src/a.txt")"
 check "pz+u multi: subdir/b.txt" "$(cat "$WORK/src/subdir/b.txt")" "$(cat "$out/src/subdir/b.txt")"
 
-# --- 3: SGZ file starts with gzip magic (1f 8b) ---
-(cd "$WORK" && "$SAR" pz magic.sgz src)
-magic=$(xxd -p -l 2 "$WORK/magic.sgz")
-check "sgz has gzip magic" "$magic" "1f8b"
+# --- 3: SZT file starts with zstd magic (28 b5 2f fd) ---
+(cd "$WORK" && "$SAR" pz magic.szt src)
+magic=$(xxd -p -l 4 "$WORK/magic.szt")
+check "szt has zstd magic" "$magic" "28b52ffd"
 
-# --- 4: SGZ is smaller than SAR for compressible content ---
+# --- 4: SZT is smaller than SAR for compressible content ---
 # Use a repetitive file to guarantee compression wins
 python3 -c "print('AAAA' * 4096)" > "$WORK/src/big.txt"
 (cd "$WORK" && "$SAR" p  size.sar src)
-(cd "$WORK" && "$SAR" pz size.sgz src)
+(cd "$WORK" && "$SAR" pz size.szt src)
 sar_size=$(stat -c '%s' "$WORK/size.sar")
-sgz_size=$(stat -c '%s' "$WORK/size.sgz")
-if [ "$sgz_size" -lt "$sar_size" ]; then
-  ok "sgz smaller than sar for compressible data"
+szt_size=$(stat -c '%s' "$WORK/size.szt")
+if [ "$szt_size" -lt "$sar_size" ]; then
+  ok "szt smaller than sar for compressible data"
 else
-  fail "sgz ($sgz_size) not smaller than sar ($sar_size)"
+  fail "szt ($szt_size) not smaller than sar ($sar_size)"
 fi
 
 # --- 5: pz then l lists files ---
-(cd "$WORK" && "$SAR" pz list.sgz src)
-listing=$(cd "$WORK" && "$SAR" l list.sgz)
+(cd "$WORK" && "$SAR" pz list.szt src)
+listing=$(cd "$WORK" && "$SAR" l list.szt)
 check "pz+l: a.txt listed"        "$(echo "$listing" | grep -c 'a.txt')"        "1"
 check "pz+l: subdir/b.txt listed" "$(echo "$listing" | grep -c 'subdir/b.txt')" "1"
 check "pz+l: c.txt listed"        "$(echo "$listing" | grep -c 'c.txt')"        "1"
 
 # --- 6: pz then g grabs file ---
 out="$WORK/t6" && mkdir "$out"
-(cd "$WORK" && "$SAR" pz grab.sgz src)
-(cd "$out"  && "$SAR" g "$WORK/grab.sgz" src/a.txt)
+(cd "$WORK" && "$SAR" pz grab.szt src)
+(cd "$out"  && "$SAR" g "$WORK/grab.szt" src/a.txt)
 check "pz+g content" "$(cat "$WORK/src/a.txt")" "$(cat "$out/src/a.txt")"
 
 # --- 7: single-thread and multi-thread pz produce same content after unpack ---
 out_s="$WORK/t7s" && mkdir "$out_s"
 out_m="$WORK/t7m" && mkdir "$out_m"
 (cd "$WORK" && "$SAR" p    t7.sar src)
-(cd "$WORK" && "$SAR" pz   t7s.sgz src)
-(cd "$WORK" && "$SAR" -j 4 pz t7m.sgz src)
-(cd "$out_s" && "$SAR" u "$WORK/t7s.sgz")
-(cd "$out_m" && "$SAR" u "$WORK/t7m.sgz")
+(cd "$WORK" && "$SAR" pz   t7s.szt src)
+(cd "$WORK" && "$SAR" -j 4 pz t7m.szt src)
+(cd "$out_s" && "$SAR" u "$WORK/t7s.szt")
+(cd "$out_m" && "$SAR" u "$WORK/t7m.szt")
 check "st vs mt pz: a.txt"        "$(cat "$out_s/src/a.txt")"        "$(cat "$out_m/src/a.txt")"
 check "st vs mt pz: subdir/b.txt" "$(cat "$out_s/src/subdir/b.txt")" "$(cat "$out_m/src/subdir/b.txt")"
 

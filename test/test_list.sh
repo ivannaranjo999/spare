@@ -21,7 +21,7 @@ echo "hello world" > "$WORK/src/a.txt"
 echo "foo bar baz" > "$WORK/src/subdir/b.txt"
 echo "third file"  > "$WORK/src/c.txt"
 (cd "$WORK" && "$SAR" p  archive.sar src)
-(cd "$WORK" && "$SAR" pz archive.sgz src)
+(cd "$WORK" && "$SAR" pz archive.szt src)
 
 # --- 1: l on SAR lists expected files ---
 listing=$(cd "$WORK" && "$SAR" l archive.sar)
@@ -34,14 +34,14 @@ total=$(echo "$listing" | grep -c '.')
 check "l sar: total entries" "$total" "3"
 
 # --- 3: l on SGZ lists expected files ---
-listing=$(cd "$WORK" && "$SAR" l archive.sgz)
-check "l sgz: a.txt present"        "$(echo "$listing" | grep -c 'src/a.txt')"        "1"
-check "l sgz: subdir/b.txt present" "$(echo "$listing" | grep -c 'src/subdir/b.txt')" "1"
-check "l sgz: c.txt present"        "$(echo "$listing" | grep -c 'src/c.txt')"         "1"
+listing=$(cd "$WORK" && "$SAR" l archive.szt)
+check "l szt: a.txt present"        "$(echo "$listing" | grep -c 'src/a.txt')"        "1"
+check "l szt: subdir/b.txt present" "$(echo "$listing" | grep -c 'src/subdir/b.txt')" "1"
+check "l szt: c.txt present"        "$(echo "$listing" | grep -c 'src/c.txt')"         "1"
 
 # --- 4: l output is one entry per line (no blank lines between entries) ---
 lines_with_src=$(echo "$listing" | grep -c 'src')
-check "l sgz: each entry on its own line" "$lines_with_src" "3"
+check "l szt: each entry on its own line" "$lines_with_src" "3"
 
 # --- 5: l on SAR via stdin pipe ---
 listing=$(cd "$WORK" && "$SAR" l - < archive.sar)
@@ -49,8 +49,8 @@ check "l stdin: a.txt present" "$(echo "$listing" | grep -c 'src/a.txt')" "1"
 check "l stdin: c.txt present" "$(echo "$listing" | grep -c 'src/c.txt')"  "1"
 
 # --- 6: l on SGZ via stdin pipe (-z) ---
-listing=$(cd "$WORK" && "$SAR" l - -z < archive.sgz)
-check "l stdin sgz: a.txt present" "$(echo "$listing" | grep -c 'src/a.txt')" "1"
+listing=$(cd "$WORK" && "$SAR" l - -z < archive.szt)
+check "l stdin szt: a.txt present" "$(echo "$listing" | grep -c 'src/a.txt')" "1"
 
 # --- 7: l exits 0 on success ---
 (cd "$WORK" && "$SAR" l archive.sar) > /dev/null 2>&1

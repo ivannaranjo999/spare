@@ -109,12 +109,12 @@ TAR_Z_R=$LAST_REAL
 TAR_Z_U=$LAST_USER
 TAR_Z_S=$LAST_SYS
 
-bench "sar pz" "$SAR" pz "${TMP}.sgz" "$KERNEL_SRC"
+bench "sar pz" "$SAR" pz "${TMP}.szt" "$KERNEL_SRC"
 SAR_Z_R=$LAST_REAL
 SAR_Z_U=$LAST_USER
 SAR_Z_S=$LAST_SYS
 
-bench "sar -j$NTHREADS pz" "$SAR" -j"$NTHREADS" pz "${TMP}_mt.sgz" "$KERNEL_SRC"
+bench "sar -j$NTHREADS pz" "$SAR" -j"$NTHREADS" pz "${TMP}_mt.szt" "$KERNEL_SRC"
 SRJ_Z_R=$LAST_REAL
 SRJ_Z_U=$LAST_USER
 SRJ_Z_S=$LAST_SYS
@@ -151,7 +151,7 @@ rm -rf "$UDIR"
 echo ""
 echo "[ Preparing compressed archives for unpack benchmarks ... ]"
 tar czf "${TMP}_u.tar.gz" "$KERNEL_SRC" 2>/dev/null
-"$SAR" pz "${TMP}_u.sgz" "$KERNEL_SRC" 2>/dev/null
+"$SAR" pz "${TMP}_u.szt" "$KERNEL_SRC" 2>/dev/null
 
 UDIR=$(mktemp -d)
 BENCH_SETUP="rm -rf '${UDIR:?}/'* && mkdir -p '$UDIR'"
@@ -163,7 +163,7 @@ TAR_UZ_R=$LAST_REAL
 TAR_UZ_U=$LAST_USER
 TAR_UZ_S=$LAST_SYS
 
-bench "sar u sgz" bash -c "cd '$UDIR' && '$SAR' u '${TMP}_u.sgz'"
+bench "sar u szt" bash -c "cd '$UDIR' && '$SAR' u '${TMP}_u.szt'"
 SAR_UZ_R=$LAST_REAL
 SAR_UZ_U=$LAST_USER
 SAR_UZ_S=$LAST_SYS
@@ -178,8 +178,8 @@ echo ""
 echo "[ Compression ratios ]"
 SRC_SIZE=$(du -sb "$KERNEL_SRC" | cut -f1)
 TGZ_SIZE=$(stat -c %s "${TMP}.tar.gz")
-SGZ_SIZE=$(stat -c %s "${TMP}.sgz")
-SGJZ_SIZE=$(stat -c %s "${TMP}_mt.sgz")
+SGZ_SIZE=$(stat -c %s "${TMP}.szt")
+SGJZ_SIZE=$(stat -c %s "${TMP}_mt.szt")
 TAR_RATIO=$(awk "BEGIN{printf \"%.2f%%\", $TGZ_SIZE/$SRC_SIZE*100}")
 SGZ_RATIO=$(awk "BEGIN{printf \"%.2f%%\", $SGZ_SIZE/$SRC_SIZE*100}")
 SGJZ_RATIO=$(awk "BEGIN{printf \"%.2f%%\", $SGJZ_SIZE/$SRC_SIZE*100}")
@@ -190,9 +190,9 @@ echo "  sar -j$NTHREADS pz: $SGJZ_SIZE bytes  ($SGJZ_RATIO)"
 
 # Cleanup temp archives
 rm -f "${TMP}".tar "${TMP}".sar "${TMP}_mt".sar \
-  "${TMP}".tar.gz "${TMP}".sgz "${TMP}_mt".sgz \
+  "${TMP}".tar.gz "${TMP}".szt "${TMP}_mt".szt \
   "${TMP}_u".tar "${TMP}_u".sar \
-  "${TMP}_u".tar.gz "${TMP}_u".sgz
+  "${TMP}_u".tar.gz "${TMP}_u".szt
 
 # ---------------------------------------------------------------------------
 # Markdown tables

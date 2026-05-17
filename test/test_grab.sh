@@ -21,7 +21,7 @@ echo "hello world" > "$WORK/src/a.txt"
 echo "foo bar baz" > "$WORK/src/subdir/b.txt"
 echo "third file"  > "$WORK/src/c.txt"
 (cd "$WORK" && "$SAR" p  archive.sar src)
-(cd "$WORK" && "$SAR" pz archive.sgz src)
+(cd "$WORK" && "$SAR" pz archive.szt src)
 
 # --- 1: g grabs top-level file from SAR ---
 out="$WORK/t1" && mkdir "$out"
@@ -41,8 +41,8 @@ check "g multi: c.txt" "$(cat "$WORK/src/c.txt")" "$(cat "$out/src/c.txt")"
 
 # --- 4: g grabs file from SGZ ---
 out="$WORK/t4" && mkdir "$out"
-(cd "$out" && "$SAR" g "$WORK/archive.sgz" src/a.txt)
-check "g sgz" "$(cat "$WORK/src/a.txt")" "$(cat "$out/src/a.txt")"
+(cd "$out" && "$SAR" g "$WORK/archive.szt" src/a.txt)
+check "g szt" "$(cat "$WORK/src/a.txt")" "$(cat "$out/src/a.txt")"
 
 # --- 5: g does not extract non-requested files ---
 out="$WORK/t5" && mkdir "$out"
@@ -65,8 +65,8 @@ check "g stdin sar" "$(cat "$WORK/src/a.txt")" "$(cat "$out/src/a.txt")"
 
 # --- 8: g via stdin pipe (SGZ with -z) ---
 out="$WORK/t8" && mkdir "$out"
-(cd "$out" && "$SAR" g - -z src/subdir/b.txt < "$WORK/archive.sgz")
-check "g stdin sgz" "$(cat "$WORK/src/subdir/b.txt")" "$(cat "$out/src/subdir/b.txt")"
+(cd "$out" && "$SAR" g - -z src/subdir/b.txt < "$WORK/archive.szt")
+check "g stdin szt" "$(cat "$WORK/src/subdir/b.txt")" "$(cat "$out/src/subdir/b.txt")"
 
 # --- cleanup ---
 rm -rf "$WORK"
