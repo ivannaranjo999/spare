@@ -18,10 +18,10 @@ Actions:
   sar g   <archive.sar|.szt> <file1..fileN>  Grab specific files contained in a SAR archive.
   sar i   <archive.sar|.szt> <file1..fileN>  Insert specific files to a SAR archive.
 Flags:
-  -v verbose output
-  -p enable threading for packing.
-  -c enable threading for compression.
-  -T p and c flags.
+  -v         verbose output.
+  -j [N]     use N threads for packing and compression (default: all cores).
+  -z         when archive path is '-', treat stdin as compressed (SZT).
+  -S         detect and preserve sparse holes (VM images, database files).
 ```
 ## Benchmarks
 ### Conditions
@@ -86,7 +86,7 @@ Use `-z` when reading a compressed archive from stdin so SAR knows the format wi
 | `sar g  -` *(uncompressed)*    | zero |
 | `sar p  - -j N`                | `sar.tmp`: `pack_threads` requires mmap, which needs a seekable file |
 | `sar pz -`                     | `sar.tmp`: compression runs on the whole archive after packing, so the packed archive must exist first |
-| `sar u  - -z`                  | `sar.tmp`: the decompressor requires a seekable file path, not a pipe — stdin is buffered first |
+| `sar u  - -z`                  | `sar.tmp`: the decompressor requires a seekable file path, not a pipe, stdin is buffered first |
 | `sar l  - -z` / `sar g - -z`  | `sar.tmp` + `sar_stdin.tmp`: decompressed archive written to disk (list/grab use fseek), plus stdin buffered |
 
 The zero-disk guarantee only holds end-to-end when both sides of the pipe use uncompressed single-threaded operations. For example, `sar pz - | ssh host "sar u - -z"` writes a temp file on **both** machines.
@@ -95,8 +95,43 @@ The zero-disk guarantee only holds end-to-end when both sides of the pipe use un
 SAR archives are just a flat binary file which is built as a concatenation of blocks, one per file. Each block contains a header and the file contents. The header is a fixed-size C struct storing everything needed to reconstruct the file.
 
 ```
-[ FileHeader | raw bytes ][ FileHeader | raw bytes ] ...
+[ FileHeader | HoleEntry[hole_count] | stored_size bytes ]  ...
 ```
+
+### FileHeader fields
+
+| Field | Type | Offset | Description |
+|---|---|---|---|
+| magic | char[3] | 0 | Always `"SAR"` |
+| version | uint8 | 3 | Format version (3) |
+| filename | char[4096] | 4 | Stored path |
+| mode | uint32 | 4100 | File permissions and type |
+| uid | uint32 | 4104 | Owner user ID |
+| gid | uint32 | 4108 | Owner group ID |
+| file_size | uint64 | 4112 | Logical file size (`stat st_size`) |
+| mtime | int64 | 4120 | Last-modified time (Unix timestamp) |
+| checksum | uint64 | 4128 | xxh64 of (header with checksum=0) + hole map + data |
+| stored_size | uint64 | 4136 | Bytes of data stored in archive (equals file_size when not sparse) |
+| hole_count | uint64 | 4144 | Number of `HoleEntry` pairs after this header |
+
+Total: 4152 bytes, no padding.
+
+### HoleEntry (16 bytes)
+
+| Field | Type | Description |
+|---|---|---|
+| offset | uint64 | Where the hole starts in the logical file |
+| length | uint64 | Length of the hole in bytes |
+
+### Per-file checksums
+
+Every block carries an xxh64 checksum over: the FileHeader (checksum field zeroed), the HoleEntry array, and the stored data bytes. This detects corruption in filenames, permissions, timestamps, sizes, hole maps, and file contents.
+
+### Sparse file support
+
+With the `-S` flag, SAR uses `SEEK_HOLE`/`SEEK_DATA` to skip zero regions during packing. Only the actual data is stored, holes are recorded in the HoleEntry array and recreated with `fallocate(PUNCH_HOLE)` on unpack. This is a Linux-specific optimisation; on filesystems that don't support it, SAR falls back to storing the full file.
+
+Sparse detection is folded into the existing pre-scan phase of multithreaded packing (`-j N`): each file is opened, lseeked for holes, then closed, no extra data read. The data is then read only once by the worker threads, skipping hole regions.
 
 ## Compression
 When invoked with `pz`/`u`, SAR compresses and decompresses the entire archive using **zstd**. The output is a standard `.szt` file (a valid zstd stream readable by `zstd -d`).
@@ -108,6 +143,7 @@ Only `p` action has its `pz` alternative since SAR is able to detect in the rest
 ## Building & Installing
 List of dependencies:
 - zstd
+- xxhash (header only, no linking required)
 
 To build binary, run:
 ```
