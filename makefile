@@ -35,4 +35,7 @@ veryclean:
 test: $(TARGET)
 	bash test/run_all.sh
 
+list:
+	@grep '^[^#[:space:]\.].*:' makefile
+
 .PHONY: all clean install uninstall veryclean test
