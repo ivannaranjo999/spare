@@ -20,32 +20,33 @@
 #define XXH_INLINE_ALL
 #include <xxhash.h>
 
+#include "config.h"
+
 #define SAR_MAGIC "SAR" /* Magic string at start of every header */
-#define SAR_VERSION 2 /* format version */
-#define SAR_PRINT_VERSION "v2.0" /* release version */
+#define SAR_VERSION 3 /* format version */
 #define SAR_MAX_PATH 4096 /* max length of stored path */
-#define SAR_ARCHIVE_BUF_SIZE 1024*1024 /* 1MB read buffer */
-#define SAR_FILE_BUF_SIZE (64 * 1024) /* 64KB for individual file writes */
 
 extern int g_nthreads; /* Worker thread count, set by -j flag */
 
-#define COPY_BUFFER_SIZE_SMALL (4 * 1024) /* 4KB for recursing calls */
-#define COPY_BUFFER_SIZE (64 * 1024) /* 64KB for not recursing calls */
-
-#define TMP_FILENAME "sar.tmp" /* Temp file for in disk operations */
-#define TMP_STDIN_FILENAME "sar_stdin.tmp" /* Temp file to buffer stdin */
-
-/* File header struct for SAR archives */
+/* Sparse hole region: [offset, offset+length) is all zeros in the logical file */
 typedef struct {
-  char     magic[3];
-  uint8_t  version;
-  char     filename[SAR_MAX_PATH];
-  uint32_t mode;
-  uint32_t uid;
-  uint32_t gid;
-  uint64_t file_size;
-  int64_t  mtime;
-  uint64_t checksum;
+  uint64_t offset;
+  uint64_t length;
+} HoleEntry;
+
+/* File header struct for SAR archives, 4152 bytes */
+typedef struct {
+  char     magic[3];               /* @ 0 */
+  uint8_t  version;                /* @ 3 */
+  char     filename[SAR_MAX_PATH]; /* @ 4 */
+  uint32_t mode;                   /* @ 4100 */
+  uint32_t uid;                    /* @ 4104*/
+  uint32_t gid;                    /* @ 4108 */
+  uint64_t file_size;              /* @ 4112, logical file size */
+  int64_t  mtime;                  /* @ 4120 */
+  uint64_t checksum;               /* @ 4128 */
+  uint64_t stored_size;            /* @ 4136, bytes stored in archive */
+  uint64_t hole_count;             /* @ 4144 num of HoleEntry after header */
 } FileHeader;
 
 /* Struct for decompression without using disk */
@@ -70,37 +71,34 @@ typedef enum {
   ARCHIVE_SZT
 } ArchiveFormat;
 
-typedef enum {
-  DONOTFLUSH,
-  DOFLUSH
-} FlushNeeded;
 
 /* Functions used somewhere else */
-int pack(FILE *archive_path, const char **filepaths, int count, int verbose);
-int pack_file(FILE *archive, const char *filepath, int verbose);
-int pack_threads(const char *archive_path, const char **filepaths, int count, int verbose);
+int pack(FILE *archive_path, const char **filepaths, int count, int sparse, int verbose);
+int pack_file(FILE *archive, const char *filepath, int sparse, int verbose);
+int pack_threads(const char *archive_path, const char **filepaths, int count, int sparse, int verbose);
 int unpack(FILE *archive_path, int verbose);
 int unpack_file(FILE *archive, DirCache *cache, int verbose);
 int compress_arch(const char *dst_path, const char *src_path, int verbose);
 int decompress_arch(const char *dst_path, const char *src_path, int verbose);
-int decompress_arch_ram(FILE **dst_fp, const char *src_path, 
-                        pthread_t *dst_thread, DecompressRamArgs *dst_args, 
+int decompress_arch_ram(FILE **dst_fp, const char *src_path,
+                        pthread_t *dst_thread, DecompressRamArgs *dst_args,
                         int verbose);
 int list(FILE *archive);
 int grab(FILE *archive, const char **filepaths, int count, int verbose);
-int insert(FILE *archive_path, const char **filepaths, int count, int verbose);
+int insert(FILE *archive_path, const char **filepaths, int count, int sparse, int verbose);
 int decompress_arch_ram_join(pthread_t thread, DecompressRamArgs *arg);
 void dircache_init(DirCache *c);
 void dircache_free(DirCache *c);
-uint64_t checksum_compute(const FileHeader *h, const void *data, uint64_t size);
+uint64_t checksum_compute(const FileHeader *h, const HoleEntry *holes,
+                          uint64_t hole_count, const void *data, uint64_t size);
 
-/* Pointer to function of any action with the FILE* of the uncompressed file 
+/* Pointer to function of any action with the FILE* of the uncompressed file
  * and unknown arguments */
 typedef int (*ActionFn)(FILE *fp, void *user_data);
 typedef struct { int verbose; } UnpackArgs;
 typedef struct { const char **filepaths; int nfiles; int verbose; } GrabArgs;
-typedef struct { const char **filepaths; int nfiles; int verbose; } PackArgs;
-typedef struct { const char **filepaths; int nfiles; int verbose; } InsertArgs;
+typedef struct { const char **filepaths; int nfiles; int sparse; int verbose; } PackArgs;
+typedef struct { const char **filepaths; int nfiles; int sparse; int verbose; } InsertArgs;
 
 int do_unpack(FILE *fp, void *user_data);
 int do_list(FILE *fp, void *user_data);

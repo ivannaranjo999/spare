@@ -1,35 +1,214 @@
 #include "sar.h"
 
+/* SEEK_DATA / SEEK_HOLE are Linux extensions exposed via _GNU_SOURCE.
+ * -std=gnu11 implies _GNU_SOURCE but some linters miss it; define fallbacks. */
+#ifndef SEEK_DATA
+#define SEEK_DATA 3
+#endif
+#ifndef SEEK_HOLE
+#define SEEK_HOLE 4
+#endif
+
 /* ------------------------------------------------------------------ */
 /*  Internal types                                                     */
 /* ------------------------------------------------------------------ */
- 
+
 typedef struct {
   char filepath[SAR_MAX_PATH];
   char linkpath[SAR_MAX_PATH];
   uint8_t *dest; /* pointer into mmap region for this file */
   uint64_t file_size;
+  uint64_t stored_size; /* actual bytes stored (< file_size when sparse) */
+  HoleEntry *holes;
+  uint64_t hole_count;
   uint32_t mode;
   uint32_t uid;
   uint32_t gid;
   int64_t mtime;
 } WorkItem;
- 
+
 typedef struct {
-    WorkItem *items;        /* this thread's slice of the work array  */
-    int       count;        /* number of items in the slice           */
-    int       verbose;
-    int       result;       /* thread writes 0 or -1 here             */
+  WorkItem *items;        /* this thread's slice of the work array  */
+  int       count;        /* number of items in the slice           */
+  int       verbose;
+  int       result;       /* thread writes 0 or -1 here             */
 } ThreadArgs;
- 
+
+/* ------------------------------------------------------------------ */
+/*  Data-region iterator                                               */
+/* ------------------------------------------------------------------ */
+
+/* Called for each chunk of file data during region iteration.
+ * Return 0 to continue, -1 to abort. */
+typedef int (*DataChunkCb)(const void *buf, size_t n, void *ctx);
+
+/* Context for write_chunk: write data chunks to an archive FILE* */
+typedef struct {
+  FILE       *dst;
+  const char *path;
+} WriteCtx;
+
+/* Feed each chunk into an xxhash state */
+static int hash_chunk(const void *buf, size_t n, void *ctx) {
+  XXH64_update((XXH64_state_t *)ctx, buf, n);
+  return 0;
+}
+
+/* Write each chunk to an archive FILE* */
+static int write_chunk(const void *buf, size_t n, void *ctx) {
+  WriteCtx *c = ctx;
+  if (fwrite(buf, 1, n, c->dst) != n) {
+    fprintf(stderr, "error: failed to write data for '%s'\n", c->path);
+    return -1;
+  }
+  return 0;
+}
+
+/* Copy each chunk into a mmap region, advancing the destination pointer */
+static int memcpy_chunk(const void *buf, size_t n, void *ctx) {
+  uint8_t **dst = ctx;
+  memcpy(*dst, buf, n);
+  *dst += n;
+  return 0;
+}
+
+/* ----------------------------------------------------------------------------
+ * foreach_data_region
+ *
+ * Reads every data byte of src (skipping sparse holes) and calls cb for each
+ * chunk read. Dense files (hole_count == 0) are read sequentially; sparse
+ * files seek to each data region in turn. buf/buf_size is the caller-provided
+ * scratch buffer. filepath is used only for error messages.
+ * Returns 0 on success, -1 on I/O error or if cb returns -1.
+ * ------------------------------------------------------------------------- */
+static int foreach_data_region(FILE *src, const char *filepath,
+    const HoleEntry *holes, uint64_t hole_count, uint64_t file_size,
+    void *buf, size_t buf_size, DataChunkCb cb, void *ctx) {
+  /* Local variables */
+  uint64_t i, region_start, region_end, remaining;
+  size_t bytes_read, chunk;
+
+  /* Code */
+  if (hole_count == 0) {
+    /* dense: sequential read */
+    while ((bytes_read = fread(buf, 1, buf_size, src)) > 0) {
+      if (cb(buf, bytes_read, ctx) != 0) return -1;
+    }
+  } else {
+    /* sparse: only read data regions, skip holes */
+    for (i = 0; i <= hole_count; i++) {
+      region_start = (i == 0) ? 0 : holes[i-1].offset + holes[i-1].length;
+      region_end   = (i == hole_count) ? file_size : holes[i].offset;
+      if (region_start >= region_end) continue;
+      if (fseeko(src, (off_t)region_start, SEEK_SET) != 0) {
+        perror(filepath);
+        return -1;
+      }
+      remaining = region_end - region_start;
+      while (remaining > 0) {
+        chunk = remaining < buf_size ? (size_t)remaining : buf_size;
+        bytes_read = fread(buf, 1, chunk, src);
+        if (bytes_read == 0) break;
+        if (cb(buf, bytes_read, ctx) != 0) return -1;
+        remaining -= bytes_read;
+      }
+    }
+  }
+
+  if (ferror(src)) {
+    fprintf(stderr, "error: failed to read '%s'\n", filepath);
+    return -1;
+  }
+  return 0;
+}
+
+/* ----------------------------------------------------------------------------
+ * build_hole_map
+ *
+ * Walks fd with SEEK_DATA / SEEK_HOLE to find sparse regions. On success,
+ * *holes_out / *hole_count_out / *stored_size_out are set. If the filesystem
+ * doesn't support sparse detection (EINVAL) or the file has no holes, the
+ * outs are left at their defaults (NULL / 0 / file_size) and 0 is returned.
+ * Returns 0 on success, -1 on allocation failure.
+ * ------------------------------------------------------------------------- */
+static int build_hole_map(int fd, uint64_t file_size,
+    HoleEntry **holes_out, uint64_t *hole_count_out, uint64_t *stored_size_out) {
+  /* Local variables */
+  HoleEntry *holes = NULL;
+  uint64_t hole_count = 0;
+  uint64_t capacity = 0;
+  uint64_t stored_size = 0;
+  off_t pos = 0;
+  off_t data_start, data_end;
+
+  /* Code */
+  if (file_size == 0)
+    return 0;
+
+  while (pos < (off_t)file_size) {
+    data_start = lseek(fd, pos, SEEK_DATA);
+    if (data_start == -1) {
+      if (errno == ENXIO) {
+        /* rest of file is a trailing hole */
+        if (hole_count == capacity) {
+          uint64_t new_cap = capacity == 0 ? 4 : capacity * 2;
+          HoleEntry *tmp = realloc(holes, new_cap * sizeof(HoleEntry));
+          if (!tmp) { free(holes); return -1; }
+          holes = tmp; capacity = new_cap;
+        }
+        holes[hole_count].offset = (uint64_t)pos;
+        holes[hole_count].length = file_size - (uint64_t)pos;
+        hole_count++;
+        break;
+      }
+      /* EINVAL: filesystem doesn't support SEEK_DATA, treat as non-sparse */
+      free(holes);
+      return 0;
+    }
+    if (data_start > pos) {
+      /* hole between pos and data_start */
+      if (hole_count == capacity) {
+        uint64_t new_cap = capacity == 0 ? 4 : capacity * 2;
+        HoleEntry *tmp = realloc(holes, new_cap * sizeof(HoleEntry));
+        if (!tmp) { free(holes); return -1; }
+        holes = tmp; capacity = new_cap;
+      }
+      holes[hole_count].offset = (uint64_t)pos;
+      holes[hole_count].length = (uint64_t)(data_start - pos);
+      hole_count++;
+    }
+
+    data_end = lseek(fd, data_start, SEEK_HOLE);
+    if (data_end == -1 || data_end > (off_t)file_size)
+      data_end = (off_t)file_size;
+    if (data_end <= data_start)
+      data_end = (off_t)file_size;
+
+    stored_size += (uint64_t)(data_end - data_start);
+    pos = data_end;
+  }
+
+  if (hole_count == 0) {
+    free(holes);
+    return 0; /* stored_size_out already set to file_size by caller */
+  }
+
+  *holes_out = holes;
+  *hole_count_out = hole_count;
+  *stored_size_out = stored_size;
+  return 0;
+}
+
 /* ----------------------------------------------------------------------------
  * fill_workitem
  *
  * Zero and populate a WorkItem. Pass NULL for linkpath on regular files.
+ * stored_size and holes are initialised to non-sparse defaults; callers that
+ * detect holes must update them after calling this.
  * ------------------------------------------------------------------------- */
 static void fill_workitem(WorkItem *w, const char *filepath, const char *linkpath,
-                          uint64_t file_size, uint32_t mode,
-                          uint32_t uid, uint32_t gid, int64_t mtime){
+  uint64_t file_size, uint32_t mode, uint32_t uid, uint32_t gid, int64_t mtime){
+  /* Code */
   memset(w, 0, sizeof(*w));
   strncpy(w->filepath, filepath, SAR_MAX_PATH - 1);
   w->filepath[SAR_MAX_PATH - 1] = '\0';
@@ -38,6 +217,9 @@ static void fill_workitem(WorkItem *w, const char *filepath, const char *linkpat
     w->linkpath[SAR_MAX_PATH - 1] = '\0';
   }
   w->file_size = file_size;
+  w->stored_size = file_size;
+  w->holes = NULL;
+  w->hole_count = 0;
   w->mode = mode;
   w->uid = uid;
   w->gid = gid;
@@ -52,7 +234,8 @@ static void fill_workitem(WorkItem *w, const char *filepath, const char *linkpat
  * file into *items, growing the array as needed.
  * Returns 0 on success, -1 on error.
  * ------------------------------------------------------------------------- */
-static int collect_files(const char *filepath, WorkItem **items, int *count, int *capacity) {
+static int collect_files(const char *filepath, WorkItem **items, int *count,
+  int *capacity, int sparse) {
   /* Local variables */
   struct stat st;
   DIR *dir;
@@ -61,6 +244,7 @@ static int collect_files(const char *filepath, WorkItem **items, int *count, int
   char linkbuf[SAR_MAX_PATH];
   ssize_t linklen;
   int result = 0;
+  int fd;
 
   /* Code */
   /* Read metadata with lstat to not follow symlinks */
@@ -86,13 +270,13 @@ static int collect_files(const char *filepath, WorkItem **items, int *count, int
         perror("realloc");
         return -1;
       }
-      *items    = tmp;
+      *items = tmp;
       *capacity = new_cap;
     }
 
     WorkItem *w = &(*items)[*count];
     fill_workitem(w, filepath, linkbuf, (uint64_t)linklen,
-      (uint32_t)st.st_mode, (uint32_t)st.st_uid, (uint32_t)st.st_gid, 
+      (uint32_t)st.st_mode, (uint32_t)st.st_uid, (uint32_t)st.st_gid,
       (int64_t)st.st_mtime);
     (*count)++;
     return 0;
@@ -115,7 +299,7 @@ static int collect_files(const char *filepath, WorkItem **items, int *count, int
         result = -1;
         continue;
       }
-      if (collect_files(fullpath, items, count, capacity) != 0)
+      if (collect_files(fullpath, items, count, capacity, sparse) != 0)
           result = -1;
     }
     closedir(dir);
@@ -143,28 +327,45 @@ static int collect_files(const char *filepath, WorkItem **items, int *count, int
   /* fill in the work item, dest is assigned later by assign_offsets */
   WorkItem *w = &(*items)[*count];
   fill_workitem(w, filepath, NULL, (uint64_t)st.st_size,
-    (uint32_t)st.st_mode, (uint32_t)st.st_uid, (uint32_t)st.st_gid, 
+    (uint32_t)st.st_mode, (uint32_t)st.st_uid, (uint32_t)st.st_gid,
     (int64_t)st.st_mtime);
+
+  /* fold hole detection into the pre-scan: open+lseek+close, no data read */
+  if (sparse && st.st_size > 0) {
+    fd = open(filepath, O_RDONLY);
+    if (fd >= 0) {
+      build_hole_map(fd, (uint64_t)st.st_size, &w->holes, &w->hole_count, 
+        &w->stored_size);
+      close(fd);
+    }
+  }
+
   (*count)++;
   return 0;
 }
- 
+
 /* ----------------------------------------------------------------------------
  * assign_offsets
  *
- * Walk the flat WorkItem array, compute each file's byte offset and 
+ * Walk the flat WorkItem array, compute each file's byte offset and
  * set dest = mmap_base + offset.
  * Returns the total archive size in bytes.
  * ------------------------------------------------------------------------- */
 static uint64_t assign_offsets(WorkItem *items, int count, uint8_t *mmap_base) {
+  /* Local variables */
   uint64_t offset = 0;
-  for (int i = 0; i < count; i++) {
+  int i;
+
+  /* Code */
+  for (i = 0; i < count; i++) {
     items[i].dest = mmap_base + offset;
-    offset += sizeof(FileHeader) + items[i].file_size;
+    offset += sizeof(FileHeader)
+      + items[i].hole_count * sizeof(HoleEntry)
+      + items[i].stored_size;
   }
   return offset;
 }
- 
+
 /* ----------------------------------------------------------------------------
  * fill_header
  *
@@ -175,12 +376,15 @@ static uint64_t assign_offsets(WorkItem *items, int count, uint8_t *mmap_base) {
  * call checksum_compute() and store the result in h->checksum themselves.
  * ------------------------------------------------------------------------- */
 static void fill_header(FileHeader *h, const char *filepath,
-    uint64_t file_size, uint32_t mode, uint32_t uid, uint32_t gid, 
-    int64_t mtime){
+    uint64_t file_size, uint64_t stored_size, uint64_t hole_count,
+    uint32_t mode, uint32_t uid, uint32_t gid, int64_t mtime){
+  /* Code */
   memset(h, 0, sizeof(*h));
   memcpy(h->magic, SAR_MAGIC, 3);
   h->version = SAR_VERSION;
   h->file_size = file_size;
+  h->stored_size = stored_size;
+  h->hole_count = hole_count;
   h->mode = mode;
   h->uid = uid;
   h->gid = gid;
@@ -192,71 +396,63 @@ static void fill_header(FileHeader *h, const char *filepath,
 /* ----------------------------------------------------------------------------
  *  write_item
  *
- *  Write one WorkItem (header + file data) directly into its assigned
- *  mmap region. Called from worker threads.
+ *  Write one WorkItem (header + hole map + file data) directly into its
+ *  assigned mmap region. Called from worker threads.
  *  Returns 0 on success, -1 on error.
  * ------------------------------------------------------------------------- */
- 
+
 static int write_item(const WorkItem *w, int verbose){
   /* Local variables */
   FileHeader *header = (FileHeader *)w->dest;
+  HoleEntry *hole_dest;
   uint8_t *data_dest;
+  uint8_t buf[COPY_BUFFER_SIZE];
+  FILE *src;
 
   /* Code */
-  fill_header(header, w->filepath, w->file_size, w->mode, w->uid, w->gid, 
-    w->mtime);
+  fill_header(header, w->filepath, w->file_size, w->stored_size, w->hole_count,
+    w->mode, w->uid, w->gid, w->mtime);
 
-  data_dest = w->dest + sizeof(FileHeader);
+  hole_dest = (HoleEntry *)(w->dest + sizeof(FileHeader));
+  if (w->hole_count > 0)
+    memcpy(hole_dest, w->holes, w->hole_count * sizeof(HoleEntry));
+
+  data_dest = w->dest + sizeof(FileHeader) + w->hole_count * sizeof(HoleEntry);
 
   /* If symlink, do not fopen anything */
   if (S_ISLNK(w->mode)) {
     memcpy(data_dest, w->linkpath, w->file_size);
-    header->checksum = checksum_compute(header, data_dest, w->file_size);
+    header->checksum = checksum_compute(header, NULL, 0, data_dest, w->file_size);
     if (verbose)
       printf("packed: '%s' -> '%s'\n", w->filepath, w->linkpath);
     return 0;
   }
 
-  /* read file data directly into mmap region after the header */
-  FILE *src = fopen(w->filepath, "rb");
+  /* read file data directly into mmap region after the header + hole map */
+  src = fopen(w->filepath, "rb");
   if (src == NULL) {
     perror(w->filepath);
     return -1;
   }
   setvbuf(src, NULL, _IOFBF, SAR_FILE_BUF_SIZE);
 
-  uint64_t remaining = w->file_size;
-  uint8_t buf[COPY_BUFFER_SIZE];
-
-  while (remaining > 0) {
-    size_t chunk = remaining < sizeof(buf) ? remaining : sizeof(buf);
-    size_t bytes_read = fread(buf, 1, chunk, src);
-    if (bytes_read == 0) {
-      fprintf(stderr, "error: unexpected EOF reading '%s'\n", w->filepath);
-      fclose(src);
-      return -1;
-    }
-    memcpy(data_dest, buf, bytes_read);
-    data_dest += bytes_read;
-    remaining -= bytes_read;
-  }
-
-  if (ferror(src)) {
-    fprintf(stderr, "error: failed to read '%s'\n", w->filepath);
+  if (foreach_data_region(src, w->filepath, w->holes, w->hole_count, w->file_size,
+        buf, sizeof(buf), memcpy_chunk, &data_dest) != 0) {
     fclose(src);
     return -1;
   }
 
   fclose(src);
 
-  header->checksum = checksum_compute(header, w->dest + sizeof(FileHeader),
-   w->file_size);
+  header->checksum = checksum_compute(header, w->holes, w->hole_count,
+    w->dest + sizeof(FileHeader) + w->hole_count * sizeof(HoleEntry),
+    w->stored_size);
 
   if (verbose)
     printf("packed: '%s' (%llu + %llu bytes)\n",
-            w->filepath,
-            (unsigned long long)sizeof(FileHeader),
-            (unsigned long long)w->file_size);
+      w->filepath,
+      (unsigned long long)sizeof(FileHeader),
+      (unsigned long long)w->stored_size);
 
   return 0;
 }
@@ -267,7 +463,7 @@ static int write_item(const WorkItem *w, int verbose){
  * pthread entry point. Processes its assigned slice of WorkItems.
  *
  * ------------------------------------------------------------------------- */
- 
+
 static void *worker_thread(void *arg) {
   ThreadArgs *args = (ThreadArgs *)arg;
   args->result = 0;
@@ -279,7 +475,7 @@ static void *worker_thread(void *arg) {
 
   return NULL;
 }
- 
+
 /* ----------------------------------------------------------------------------
  *  pack_threads
  *
@@ -287,8 +483,10 @@ static void *worker_thread(void *arg) {
  *  filepaths[0..count-1] using mmap + multithreading.
  *  Returns 0 on success, -1 on error.
  * ------------------------------------------------------------------------- */
- 
-int pack_threads(const char *archive_path, const char **filepaths, int count, int verbose) {
+
+int pack_threads(const char *archive_path, const char **filepaths, int count,
+  int sparse, int verbose) {
+  /* Local variables */
   WorkItem *items = NULL;
   int n_items = 0;
   int capacity = 0;
@@ -305,13 +503,16 @@ int pack_threads(const char *archive_path, const char **filepaths, int count, in
   int i = 0;
   int t = 0;
 
+  /* Code */
   /* --- phase 1: collect all files into a flat array ------------- */
+  /* For sparse mode, hole detection is folded into collect_files:  */
+  /* each file is opened, lseeked for holes, closed, no data read. */
 
   if (verbose)
     printf("pre-allocating files in memory ...\n");
 
   for (i = 0; i < count; i++) {
-    if (collect_files(filepaths[i], &items, &n_items, &capacity) != 0)
+    if (collect_files(filepaths[i], &items, &n_items, &capacity, sparse) != 0)
         result = -1;
   }
 
@@ -325,7 +526,9 @@ int pack_threads(const char *archive_path, const char **filepaths, int count, in
 
   total_size = 0;
   for (i = 0; i < n_items; i++)
-    total_size += sizeof(FileHeader) + items[i].file_size;
+    total_size += sizeof(FileHeader)
+      + items[i].hole_count * sizeof(HoleEntry)
+      + items[i].stored_size;
 
   if (verbose)
     printf("pack: %d files, total archive size: %llu bytes\n",
@@ -412,6 +615,9 @@ int pack_threads(const char *archive_path, const char **filepaths, int count, in
   munmap(mmap_base, total_size);
   free(threads);
   free(args);
+
+  for (i = 0; i < n_items; i++)
+    free(items[i].holes);
   free(items);
 
   return result;
@@ -424,7 +630,7 @@ int pack_threads(const char *archive_path, const char **filepaths, int count, in
  * Write one file into the open archive.
  * Returns 0 on success, -1 on error.
  * ------------------------------------------------------------------------- */
-int pack_file(FILE *archive, const char *filepath, int verbose){
+int pack_file(FILE *archive, const char *filepath, int sparse, int verbose){
   /* Local variables */
   struct stat st;
   FILE *src;
@@ -434,12 +640,20 @@ int pack_file(FILE *archive, const char *filepath, int verbose){
   char buf[COPY_BUFFER_SIZE_SMALL];
   char fullpath[SAR_MAX_PATH];
   char linkbuf[SAR_MAX_PATH];
-  size_t bytes_read;
   ssize_t linklen;
   XXH64_state_t state;
+  WriteCtx wctx;
+  HoleEntry *holes;
+  uint64_t hole_count;
+  uint64_t stored_size;
+  int fd;
   int result = 0;
 
   /* Code */
+  holes = NULL;
+  hole_count = 0;
+  stored_size = 0;
+
   /* Read metadata with lstat to not follow symlinks */
   if (lstat(filepath, &st) != 0) {
     perror(filepath);
@@ -454,28 +668,29 @@ int pack_file(FILE *archive, const char *filepath, int verbose){
       return -1;
     }
     linkbuf[linklen] = '\0';
- 
-    fill_header(&header, filepath, (uint64_t)linklen,
+
+    fill_header(&header, filepath, (uint64_t)linklen, (uint64_t)linklen, 0,
       (uint32_t)st.st_mode, (uint32_t)st.st_uid, (uint32_t)st.st_gid,
       (int64_t)st.st_mtime);
-    header.checksum = checksum_compute(&header, linkbuf, (uint64_t)linklen);
+    header.checksum = checksum_compute(&header, NULL, 0,
+                                       linkbuf, (uint64_t)linklen);
 
     /* Write header */
     if (fwrite(&header, sizeof(header), 1, archive) != 1) {
       fprintf(stderr, "error: failed to write header for '%s'\n", filepath);
       return -1;
     }
- 
+
     /* Write target path as file data */
     if (fwrite(linkbuf, 1, linklen, archive) != (size_t)linklen) {
       fprintf(stderr, "error: failed to write symlink target for '%s'\n",
         filepath);
       return -1;
     }
- 
+
     if (verbose)
       printf("packed: '%s' -> '%s'\n", filepath, linkbuf);
- 
+
     /* Do not continue */
     return 0;
   }
@@ -492,12 +707,12 @@ int pack_file(FILE *archive, const char *filepath, int verbose){
       if(strcmp(entry->d_name, "..") == 0) continue;
       if (snprintf(fullpath, sizeof(fullpath), "%s/%s",
           filepath, entry->d_name) >= (int)sizeof(fullpath)){
-        fprintf(stderr, "error: path too long: '%s/%s'\n", 
+        fprintf(stderr, "error: path too long: '%s/%s'\n",
           filepath, entry->d_name);
         result = -1;
         continue;
       }
-      if (pack_file(archive, fullpath, verbose) != 0) result = -1;
+      if (pack_file(archive, fullpath, sparse, verbose) != 0) result = -1;
     }
     closedir(dir);
 
@@ -514,24 +729,32 @@ int pack_file(FILE *archive, const char *filepath, int verbose){
   /* Open file */
   src = fopen(filepath, "rb");
   if (src == NULL){
-    perror(filepath); 
+    perror(filepath);
     return -1;
   }
   setvbuf(src, NULL, _IOFBF, SAR_FILE_BUF_SIZE);
 
-  fill_header(&header, filepath, (uint64_t)st.st_size,
+  stored_size = (uint64_t)st.st_size;
+
+  /* Hole detection via the already-open fd: lseeks only, no data read */
+  if (sparse && st.st_size > 0) {
+    fd = fileno(src);
+    build_hole_map(fd, (uint64_t)st.st_size, &holes, &hole_count, &stored_size);
+    rewind(src);
+  }
+
+  fill_header(&header, filepath, (uint64_t)st.st_size, stored_size, hole_count,
     (uint32_t)st.st_mode, (uint32_t)st.st_uid,
     (uint32_t)st.st_gid, (int64_t)st.st_mtime);
 
-  /* First pass: compute checksum over header + file data */
+  /* First pass: compute checksum over header + hole map + file data regions */
   XXH64_reset(&state, 0);
   XXH64_update(&state, &header, sizeof(header));
-  while ((bytes_read = fread(buf, 1, sizeof(buf), src)) > 0)
-    XXH64_update(&state, buf, bytes_read);
-  if (ferror(src)){
-    fprintf(stderr, "error: failed to read from '%s'\n", filepath);
-    fclose(src);
-    return -1;
+  if (holes && hole_count > 0)
+    XXH64_update(&state, holes, hole_count * sizeof(HoleEntry));
+  if (foreach_data_region(src, filepath, holes, hole_count, (uint64_t)st.st_size,
+        buf, sizeof(buf), hash_chunk, &state) != 0) {
+    fclose(src); free(holes); return -1;
   }
   header.checksum = (uint64_t)XXH64_digest(&state);
   rewind(src);
@@ -539,30 +762,32 @@ int pack_file(FILE *archive, const char *filepath, int verbose){
   /* Write header to archive */
   if (fwrite(&header, sizeof(header), 1, archive) != 1){
     fprintf(stderr, "error: failed to write header for '%s'\n", filepath);
-    fclose(src);
-    return -1;
+    fclose(src); free(holes); return -1;
   }
 
-  /* Second pass: write file data to archive */
-  while ((bytes_read = fread(buf, 1, sizeof(buf), src)) > 0){
-    if(fwrite(buf, 1, bytes_read, archive) != bytes_read){
-      fprintf(stderr, "error: failed to write data for '%s'\n", filepath);
-      fclose(src);
-      return -1;
+  /* Write hole map (if sparse) */
+  if (holes && hole_count > 0) {
+    if (fwrite(holes, sizeof(HoleEntry), hole_count, archive) != hole_count) {
+      fprintf(stderr, "error: failed to write hole map for '%s'\n", filepath);
+      fclose(src); free(holes); return -1;
     }
   }
 
-  if (ferror(src)){
-    fprintf(stderr, "error: failed to read from '%s'\n", filepath);
-    fclose(src);
-    return -1;
+  /* Second pass: write data regions to archive */
+  wctx.dst  = archive;
+  wctx.path = filepath;
+  if (foreach_data_region(src, filepath, holes, hole_count, (uint64_t)st.st_size,
+        buf, sizeof(buf), write_chunk, &wctx) != 0) {
+    fclose(src); free(holes); return -1;
   }
 
   fclose(src);
+  free(holes);
+
   if (verbose)
-    printf("packed: '%s' (%llu + %llu bytes)\n", 
+    printf("packed: '%s' (%llu + %llu bytes)\n",
       filepath, (unsigned long long)sizeof(FileHeader),
-      (unsigned long long)st.st_size);
+      (unsigned long long)stored_size);
 
   return 0;
 }
@@ -570,11 +795,11 @@ int pack_file(FILE *archive, const char *filepath, int verbose){
 /* ----------------------------------------------------------------------------
  * pack
  *
- * Create an archive at 'archive_path' containing all files in 
+ * Create an archive at 'archive_path' containing all files in
  * 'filepaths[0..count-1]'.
  * Returns 0 on success, -1 on error.
  * ------------------------------------------------------------------------- */
-int pack(FILE *archive, const char **filepaths, int count, int verbose){
+int pack(FILE *archive, const char **filepaths, int count, int sparse, int verbose){
   /* Local variables */
   int   result = 0;
   int   it = 0;
@@ -582,7 +807,7 @@ int pack(FILE *archive, const char **filepaths, int count, int verbose){
   /* Code */
 
   for (it = 0; it < count; ++it){
-    if(pack_file(archive, filepaths[it], verbose) != 0){
+    if(pack_file(archive, filepaths[it], sparse, verbose) != 0){
       result = -1; /* record failure but keep packing */
     }
   }

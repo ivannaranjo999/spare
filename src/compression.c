@@ -5,7 +5,7 @@
  *
  * Compress src_path to dst_path using zstd streaming.
  * When g_nthreads > 1, sets ZSTD_c_nbWorkers so zstd manages its own thread
- * pool internally — no manual chunking needed unlike the old pigz approach.
+ * pool internally, no manual chunking needed unlike the old pigz approach.
  * Returns 0 on success, -1 on error.
  * ------------------------------------------------------------------------- */
 int compress_arch(const char *dst_path, const char *src_path, int verbose){

@@ -1,5 +1,7 @@
 #include "sar.h"
 
+typedef enum { DONOTFLUSH, DOFLUSH } FlushNeeded;
+
 /* ----------------------------------------------------------------------------
  * decompress_stream
  *
@@ -146,7 +148,7 @@ int decompress_arch_ram(FILE **dst_fp, const char *src_path,
   if (verbose)
     printf("decompressing '%s' into memory pipe ...\n", src_path);
 
-  /* open as fd — worker thread will call fdopen later */
+  /* open as fd, worker thread will call fdopen later */
   src_fd = open(src_path, O_RDONLY);
   if (src_fd < 0) {
     perror(src_path);

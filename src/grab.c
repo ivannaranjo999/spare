@@ -81,7 +81,8 @@ int grab(FILE *archive, const char **filepaths, int count, int verbose){
 
     if (matched != 1) {
       /* Jump to next file if not found */
-      fseek(archive, (long)header.file_size, SEEK_CUR);
+      fseek(archive, (long)(header.hole_count * sizeof(HoleEntry)
+        + header.stored_size), SEEK_CUR);
     }
 
     /* Read next block */

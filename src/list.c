@@ -41,7 +41,8 @@ static int get_filename(FILE *archive){
   fprintf(stdout, "%s\n", header.filename);
 
   /* Jump to next block */
-  fseek(archive, (long)header.file_size, SEEK_CUR);
+  fseek(archive, (long)(header.hole_count * sizeof(HoleEntry)
+     + header.stored_size), SEEK_CUR);
 
   return 1;
 }

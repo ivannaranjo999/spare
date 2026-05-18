@@ -7,14 +7,15 @@
  * 'filepaths[0..count-1]'.
  * Returns 0 on success, -1 on error.
  * ------------------------------------------------------------------------- */
-int insert(FILE *archive, const char **filepaths, int count, int verbose){
+int insert(FILE *archive, const char **filepaths, int count, int sparse, 
+  int verbose){
   /* Local variables */
   int   result = 0;
   int   it = 0;
 
   /* Code */
   for (it = 0; it < count; ++it){
-    if(pack_file(archive, filepaths[it], verbose) != 0){
+    if(pack_file(archive, filepaths[it], sparse, verbose) != 0){
       result = -1; /* record failure but keep packing */
     }
   }

@@ -1,5 +1,7 @@
 #include "sar.h"
 
+#define SAR_PRINT_VERSION "v3.0" /* release version */
+
 /* ----------------------------------------------------------------------------
  * Function helpers
  * ------------------------------------------------------------------------- */
@@ -25,13 +27,13 @@ int do_grab(FILE *fp, void *user_data){
 /* Arguments for pack function */
 int do_pack(FILE *fp, void *user_data){
   PackArgs *a = (PackArgs *)user_data;
-  return pack(fp, a->filepaths, a->nfiles, a->verbose);
+  return pack(fp, a->filepaths, a->nfiles, a->sparse, a->verbose);
 }
 
 /* Arguments for insert function */
 int do_insert(FILE *fp, void *user_data){
   InsertArgs *a = (InsertArgs *)user_data;
-  return insert(fp, a->filepaths, a->nfiles, a->verbose);
+  return insert(fp, a->filepaths, a->nfiles, a->sparse, a->verbose);
 }
 
 /* ----------------------------------------------------------------------------
@@ -298,18 +300,22 @@ int buffer_stdin_to_file(const char *dst_path) {
 /* ----------------------------------------------------------------------------
  * checksum_compute
  *
- * Computes xxh64 over the FileHeader followed by the file data. Zeroing is 
- * done on a local copy so the caller's struct is not modified. Used for both 
- * writing and verifying.
+ * Computes xxh64 over FileHeader (checksum field zeroed) + hole map + data.
+ * Pass holes=NULL & hole_count=0 for non-sparse files (symlinks, dense files).
  * ------------------------------------------------------------------------- */
-uint64_t checksum_compute(const FileHeader *h, const void *data, uint64_t size) {
+uint64_t checksum_compute(const FileHeader *h, const HoleEntry *holes,
+  uint64_t hole_count, const void *data, uint64_t size) {
+  /* Local variables */
   FileHeader tmp;
   XXH64_state_t state;
 
+  /* Code */
   memcpy(&tmp, h, sizeof(tmp));
   tmp.checksum = 0;
   XXH64_reset(&state, 0);
   XXH64_update(&state, &tmp, sizeof(tmp));
+  if (holes && hole_count > 0)
+    XXH64_update(&state, holes, hole_count * sizeof(HoleEntry));
   XXH64_update(&state, data, size);
   return (uint64_t)XXH64_digest(&state);
 }
@@ -334,6 +340,7 @@ void usage(const char *name){
   fprintf(stderr, "  -v         verbose output.\n");
   fprintf(stderr, "  -j [N]     use N threads for packing and compression (default: all cores).\n");
   fprintf(stderr, "  -z         when archive path is '-', treat stdin as compressed (SZT).\n");
+  fprintf(stderr, "  -S         detect and preserve sparse holes (VM images, database files).\n");
   fprintf(stderr, "\nPipeline:\n");
   fprintf(stderr, "  Use '-' as archive path to read/write stdin/stdout.\n");
   fprintf(stderr, "  %s p  - <file1..fileN>  | %s u  -       Pack and extract via pipe.\n", name, name);
