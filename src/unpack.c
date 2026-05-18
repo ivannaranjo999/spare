@@ -160,9 +160,12 @@ int unpack_file(FILE *archive, DirCache *cache , int verbose){
   FILE *dst;
   char buf[COPY_BUFFER_SIZE];
   uint64_t remaining, len;
+  uint64_t stored_checksum;
+  uint64_t computed_checksum;
   size_t bytes_read, to_write, n, chunk;
   struct utimbuf times;
   char linkbuf[SAR_MAX_PATH];
+  XXH64_state_t state;
 
   /* Code */
   /* Read header */
@@ -189,6 +192,10 @@ int unpack_file(FILE *archive, DirCache *cache , int verbose){
   /* Ensure filename is null terminated */
   header.filename[SAR_MAX_PATH - 1] = '\0';
 
+  /* Save and zero checksum so it is excluded from hash recomputation */
+  stored_checksum = header.checksum;
+  header.checksum = 0;
+
   /* Create parent dirs if needed */
   if(mkdir_parents(header.filename, cache, verbose) != 0){
     fseek(archive, (long)header.file_size, SEEK_CUR);
@@ -208,6 +215,12 @@ int unpack_file(FILE *archive, DirCache *cache , int verbose){
       return -1;
     }
     linkbuf[len] = '\0';
+
+    computed_checksum = checksum_compute(&header, linkbuf, len);
+    if (computed_checksum != stored_checksum) {
+      fprintf(stderr, "error: checksum mismatch for '%s'\n", header.filename);
+      return -1;
+    }
 
     /* remove existing file/link at destination if any */
     unlink(header.filename);
@@ -237,7 +250,9 @@ int unpack_file(FILE *archive, DirCache *cache , int verbose){
   }
   setvbuf(dst, NULL, _IOFBF, SAR_FILE_BUF_SIZE);
 
-  /* Copy data from archive to destination file */
+  /* Copy data from archive to destination file, hashing as we go */
+  XXH64_reset(&state, 0);
+  XXH64_update(&state, &header, sizeof(header));
   remaining = header.file_size;
 
   while(remaining > 0){
@@ -252,6 +267,8 @@ int unpack_file(FILE *archive, DirCache *cache , int verbose){
       return -1;
     }
 
+    XXH64_update(&state, buf, bytes_read);
+
     to_write = bytes_read;
     if(fwrite(buf, 1, to_write, dst) != to_write){
       fprintf(stderr,
@@ -265,6 +282,13 @@ int unpack_file(FILE *archive, DirCache *cache , int verbose){
   }
 
   fclose(dst);
+
+  computed_checksum = (uint64_t)XXH64_digest(&state);
+  if (computed_checksum != stored_checksum) {
+    fprintf(stderr, "error: checksum mismatch for '%s'\n", header.filename);
+    unlink(header.filename);
+    return -1;
+  }
 
   /* Restore ownership before chmod: lchown can clear setuid/setgid bits,
    * so chmod must come after to restore the full mode. EPERM is expected

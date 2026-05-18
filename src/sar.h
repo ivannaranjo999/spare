@@ -17,6 +17,9 @@
 #include <pthread.h>
 #include <zstd.h>
 
+#define XXH_INLINE_ALL
+#include <xxhash.h>
+
 #define SAR_MAGIC "SAR" /* Magic string at start of every header */
 #define SAR_VERSION 2 /* format version */
 #define SAR_PRINT_VERSION "v2.0" /* release version */
@@ -42,6 +45,7 @@ typedef struct {
   uint32_t gid;
   uint64_t file_size;
   int64_t  mtime;
+  uint64_t checksum;
 } FileHeader;
 
 /* Struct for decompression without using disk */
@@ -88,6 +92,7 @@ int insert(FILE *archive_path, const char **filepaths, int count, int verbose);
 int decompress_arch_ram_join(pthread_t thread, DecompressRamArgs *arg);
 void dircache_init(DirCache *c);
 void dircache_free(DirCache *c);
+uint64_t checksum_compute(const FileHeader *h, const void *data, uint64_t size);
 
 /* Pointer to function of any action with the FILE* of the uncompressed file 
  * and unknown arguments */

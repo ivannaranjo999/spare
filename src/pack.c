@@ -170,6 +170,9 @@ static uint64_t assign_offsets(WorkItem *items, int count, uint8_t *mmap_base) {
  *
  * Zero and populate a FileHeader. Centralises the field assignments that
  * would otherwise be duplicated in write_item and pack_file.
+ * checksum is NOT set here because it covers both the header and the file
+ * data, which is only available after fill_header returns. Callers must
+ * call checksum_compute() and store the result in h->checksum themselves.
  * ------------------------------------------------------------------------- */
 static void fill_header(FileHeader *h, const char *filepath,
     uint64_t file_size, uint32_t mode, uint32_t uid, uint32_t gid, 
@@ -208,6 +211,7 @@ static int write_item(const WorkItem *w, int verbose){
   /* If symlink, do not fopen anything */
   if (S_ISLNK(w->mode)) {
     memcpy(data_dest, w->linkpath, w->file_size);
+    header->checksum = checksum_compute(header, data_dest, w->file_size);
     if (verbose)
       printf("packed: '%s' -> '%s'\n", w->filepath, w->linkpath);
     return 0;
@@ -225,7 +229,7 @@ static int write_item(const WorkItem *w, int verbose){
   uint8_t buf[COPY_BUFFER_SIZE];
 
   while (remaining > 0) {
-    size_t chunk      = remaining < sizeof(buf) ? remaining : sizeof(buf);
+    size_t chunk = remaining < sizeof(buf) ? remaining : sizeof(buf);
     size_t bytes_read = fread(buf, 1, chunk, src);
     if (bytes_read == 0) {
       fprintf(stderr, "error: unexpected EOF reading '%s'\n", w->filepath);
@@ -244,6 +248,9 @@ static int write_item(const WorkItem *w, int verbose){
   }
 
   fclose(src);
+
+  header->checksum = checksum_compute(header, w->dest + sizeof(FileHeader),
+   w->file_size);
 
   if (verbose)
     printf("packed: '%s' (%llu + %llu bytes)\n",
@@ -429,6 +436,7 @@ int pack_file(FILE *archive, const char *filepath, int verbose){
   char linkbuf[SAR_MAX_PATH];
   size_t bytes_read;
   ssize_t linklen;
+  XXH64_state_t state;
   int result = 0;
 
   /* Code */
@@ -448,8 +456,9 @@ int pack_file(FILE *archive, const char *filepath, int verbose){
     linkbuf[linklen] = '\0';
  
     fill_header(&header, filepath, (uint64_t)linklen,
-      (uint32_t)st.st_mode, (uint32_t)st.st_uid, (uint32_t)st.st_gid, 
+      (uint32_t)st.st_mode, (uint32_t)st.st_uid, (uint32_t)st.st_gid,
       (int64_t)st.st_mtime);
+    header.checksum = checksum_compute(&header, linkbuf, (uint64_t)linklen);
 
     /* Write header */
     if (fwrite(&header, sizeof(header), 1, archive) != 1) {
@@ -514,6 +523,19 @@ int pack_file(FILE *archive, const char *filepath, int verbose){
     (uint32_t)st.st_mode, (uint32_t)st.st_uid,
     (uint32_t)st.st_gid, (int64_t)st.st_mtime);
 
+  /* First pass: compute checksum over header + file data */
+  XXH64_reset(&state, 0);
+  XXH64_update(&state, &header, sizeof(header));
+  while ((bytes_read = fread(buf, 1, sizeof(buf), src)) > 0)
+    XXH64_update(&state, buf, bytes_read);
+  if (ferror(src)){
+    fprintf(stderr, "error: failed to read from '%s'\n", filepath);
+    fclose(src);
+    return -1;
+  }
+  header.checksum = (uint64_t)XXH64_digest(&state);
+  rewind(src);
+
   /* Write header to archive */
   if (fwrite(&header, sizeof(header), 1, archive) != 1){
     fprintf(stderr, "error: failed to write header for '%s'\n", filepath);
@@ -521,7 +543,7 @@ int pack_file(FILE *archive, const char *filepath, int verbose){
     return -1;
   }
 
-  /* Copy file data into archive */
+  /* Second pass: write file data to archive */
   while ((bytes_read = fread(buf, 1, sizeof(buf), src)) > 0){
     if(fwrite(buf, 1, bytes_read, archive) != bytes_read){
       fprintf(stderr, "error: failed to write data for '%s'\n", filepath);

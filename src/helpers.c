@@ -296,6 +296,25 @@ int buffer_stdin_to_file(const char *dst_path) {
 }
 
 /* ----------------------------------------------------------------------------
+ * checksum_compute
+ *
+ * Computes xxh64 over the FileHeader followed by the file data. Zeroing is 
+ * done on a local copy so the caller's struct is not modified. Used for both 
+ * writing and verifying.
+ * ------------------------------------------------------------------------- */
+uint64_t checksum_compute(const FileHeader *h, const void *data, uint64_t size) {
+  FileHeader tmp;
+  XXH64_state_t state;
+
+  memcpy(&tmp, h, sizeof(tmp));
+  tmp.checksum = 0;
+  XXH64_reset(&state, 0);
+  XXH64_update(&state, &tmp, sizeof(tmp));
+  XXH64_update(&state, data, size);
+  return (uint64_t)XXH64_digest(&state);
+}
+
+/* ----------------------------------------------------------------------------
  * usage
  * 
  * Help information
