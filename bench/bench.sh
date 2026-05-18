@@ -1,5 +1,5 @@
 #!/bin/bash
-# bench/bench.sh — Benchmark SAR against tar using the Linux kernel source.
+# bench/bench.sh, Benchmark SAR against tar using the Linux kernel source.
 # Downloads and extracts the kernel automatically if not already present.
 # Usage: bash bench/bench.sh
 
@@ -18,7 +18,7 @@ die() {
   exit 1
 }
 
-[ -x "$SAR" ] || die "sar binary not found at $SAR — run 'make' first"
+[ -x "$SAR" ] || die "sar binary not found at $SAR, run 'make' first"
 command -v sudo >/dev/null || die "sudo is required for cache dropping"
 
 TIMEFORMAT="%R %U %S"
@@ -96,7 +96,7 @@ SRJ_P_R=$LAST_REAL
 SRJ_P_U=$LAST_USER
 SRJ_P_S=$LAST_SYS
 
-# Pack archives only needed for timing — free space before next section
+# Pack archives only needed for timing, free space before next section
 rm -f "${TMP}".tar "${TMP}".sar "${TMP}_mt".sar
 
 # ---------------------------------------------------------------------------
@@ -120,7 +120,7 @@ SRJ_Z_U=$LAST_USER
 SRJ_Z_S=$LAST_SYS
 
 # ---------------------------------------------------------------------------
-# Unpack — build reference archives once, outside of timing
+# Unpack, build reference archives once, outside of timing
 # ---------------------------------------------------------------------------
 echo ""
 echo "[ Preparing archives for unpack benchmarks ... ]"
@@ -146,7 +146,7 @@ BENCH_SETUP=""
 rm -rf "$UDIR"
 
 # ---------------------------------------------------------------------------
-# Unpack compressed — build reference archives once, outside of timing
+# Unpack compressed, build reference archives once, outside of timing
 # ---------------------------------------------------------------------------
 echo ""
 echo "[ Preparing compressed archives for unpack benchmarks ... ]"

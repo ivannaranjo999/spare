@@ -42,7 +42,7 @@ printf '\x63' | dd of="$WORK/badver.sar" bs=1 seek=3 count=1 conv=notrunc 2>/dev
 cp "$WORK/valid.sar" "$WORK/badmagic.sar"
 printf 'XXX' | dd of="$WORK/badmagic.sar" bs=1 seek=0 count=3 conv=notrunc 2>/dev/null
 
-# --- 1-4: valid archive — all read actions succeed ---
+# --- 1-4: valid archive, all read actions succeed ---
 out="$WORK/t1" && mkdir "$out"
 (cd "$out" && "$SAR" u "$WORK/valid.sar") > /dev/null 2>&1
 check "valid: u exits 0" "$?" "0"
@@ -57,7 +57,7 @@ check "valid: g exits 0" "$?" "0"
 (cd "$WORK" && "$SAR" i valid.sar src/a.txt) > /dev/null 2>&1
 check "valid: i exits 0" "$?" "0"
 
-# --- 5-8: wrong version — all read actions reject with version error ---
+# --- 5-8: wrong version, all read actions reject with version error ---
 out="$WORK/t5" && mkdir "$out"
 expect_err "badver: u rejects"    "version" "$SAR" u "$WORK/badver.sar"
 expect_err "badver: l rejects"    "version" "$SAR" l "$WORK/badver.sar"
@@ -65,11 +65,11 @@ out="$WORK/t7" && mkdir "$out"
 expect_err "badver: g rejects"    "version" "$SAR" g "$WORK/badver.sar" src/a.txt
 expect_err "badver: i rejects"    "version" "$SAR" i "$WORK/badver.sar" src/a.txt
 
-# --- 9: bad magic — rejected with magic error ---
+# --- 9: bad magic, rejected with magic error ---
 expect_err "badmagic: u rejects"  "magic"   "$SAR" u "$WORK/badmagic.sar"
 expect_err "badmagic: l rejects"  "magic"   "$SAR" l "$WORK/badmagic.sar"
 
-# --- 10: empty file — rejected (cannot read header) ---
+# --- 10: empty file, rejected (cannot read header) ---
 touch "$WORK/empty.sar"
 expect_err "empty: u rejects"     "."       "$SAR" u "$WORK/empty.sar"
 
