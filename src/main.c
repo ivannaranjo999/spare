@@ -15,6 +15,7 @@ int main(int argc, char *argv[]){
   const char *action = NULL;
   const char *archive_path = NULL;
   const char **filepaths = NULL;
+  char *endptr;
   int i = 0;
   int verbose = 0;
   int nfiles = 0;
@@ -22,6 +23,7 @@ int main(int argc, char *argv[]){
   int is_stream = 0;
   int sparse = 0;
   int ret = 0;
+  long val = 0;
   ArchiveFormat archive_format = ARCHIVE_DOESNOTEXIST;
 
   /* Code */
@@ -38,14 +40,20 @@ int main(int argc, char *argv[]){
       argv[i] = NULL;
     } else if(strcmp(argv[i], "-j") == 0){
       argv[i] = NULL;
-      if (i + 1 < argc && argv[i+1] != NULL && isdigit((unsigned char)argv[i+1][0])){
-        g_nthreads = atoi(argv[i+1]);
-        if (g_nthreads < 1) g_nthreads = 1;
-        argv[i+1] = NULL;
-        i++;
-      } else {
-        g_nthreads = (int)sysconf(_SC_NPROCESSORS_ONLN);
-        if (g_nthreads < 1) g_nthreads = 1;
+      /* By default use num of cores available */
+      g_nthreads = (int)sysconf(_SC_NPROCESSORS_ONLN);
+      if (g_nthreads < 1) g_nthreads = 1;
+      if (i + 1 < argc && argv[i+1] != NULL) {
+        val = strtol(argv[i+1], &endptr, 10);
+        /* endptr stops at the first char that could not parse. Conditions:
+         * - At least one character is consumed && 
+         * - The whole string is consumed */
+        if (endptr != argv[i+1] && *endptr == '\0') {
+          g_nthreads = (int)val;
+          if (g_nthreads < 1) g_nthreads = 1;
+          argv[i+1] = NULL;
+          i++;
+        }
       }
     } else if(strncmp(argv[i], "-j", 2) == 0 && argv[i][2] != '\0'){
       g_nthreads = atoi(argv[i] + 2);
