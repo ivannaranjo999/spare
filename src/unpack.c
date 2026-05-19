@@ -89,10 +89,10 @@ static int dircache_contains(DirCache *c, const char *path){
  * ------------------------------------------------------------------------- */
 static int dircache_insert(DirCache *c, const char *path){
   /* Local variables */
-  int    idx;
-  int    new_cap;
+  int idx;
+  int new_cap;
   char **tmp;
-  char  *copy;
+  char *copy;
 
   /* Code */
   /* grow if needed */
@@ -116,7 +116,7 @@ static int dircache_insert(DirCache *c, const char *path){
   /* find insertion point and shift entries right */
   idx = dircache_search(c, path);
   memmove(&c->dirs[idx + 1], &c->dirs[idx],
-          (c->count - idx) * sizeof(char *));
+    (c->count - idx) * sizeof(char *));
   c->dirs[idx] = copy;
   c->count++;
   return 0;

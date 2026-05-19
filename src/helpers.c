@@ -39,7 +39,7 @@ int do_insert(FILE *fp, void *user_data){
 /* ----------------------------------------------------------------------------
  * detect_archive_format
  * 
- * Returns format of the given SAR archive. Can be SGZ or SAR.
+ * Returns format of the given SAR archive. Can be SZT or SAR.
  * ------------------------------------------------------------------------- */
 ArchiveFormat detect_archive_format(const char *archive_path, int verbose){
   /* Local variables */

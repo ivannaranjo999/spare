@@ -137,8 +137,7 @@ static void *decompress_ram_worker(void *arg){
  * This allows decompression and the consuming action to run concurrently.
  * ------------------------------------------------------------------------- */
 int decompress_arch_ram(FILE **dst_fp, const char *src_path,
-                        pthread_t *dst_thread, DecompressRamArgs *dst_args,
-                        int verbose){
+  pthread_t *dst_thread, DecompressRamArgs *dst_args, int verbose){
   /* Local variables */
   int pipe_fds[2];
   int src_fd;

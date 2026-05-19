@@ -83,6 +83,7 @@ int main(int argc, char *argv[]){
   }
 
   is_stream = (strcmp(archive_path, "-") == 0);
+  /* Verbose would corrupt information */
   if (is_stream) verbose = 0;
 
   /* Detect archive format (skipped for stream: format declared by -z flag) */
@@ -104,13 +105,15 @@ int main(int argc, char *argv[]){
       return 1;
     }
 
+    /* Pack to stdout */
     if (is_stream) {
       if (g_nthreads == 1) {
         /* Write to stdout */
-        return just_run("-", "wb", do_pack, &a) == 0 ? 0 : 1;
+        return just_run(archive_path, "wb", do_pack, &a) == 0 ? 0 : 1;
       }
       /* Multithreaded: mmap needs a real file, stream result to stdout */
-      if (pack_threads(TMP_FILENAME, filepaths, nfiles, sparse, verbose) != 0) return 1;
+      if (pack_threads(TMP_FILENAME, filepaths, nfiles, sparse, verbose) != 0) 
+        return 1;
       /* Write to stdout */
       if (stream_file_to_stdout(TMP_FILENAME) != 0) {
         remove(TMP_FILENAME);
@@ -119,6 +122,7 @@ int main(int argc, char *argv[]){
       return remove(TMP_FILENAME) == 0 ? 0 : 1;
     }
 
+    /* Pack to file in disk */
     if (g_nthreads == 1){
       return just_run(archive_path, "wb", do_pack, &a) == 0 ? 0 : 1;
     } else {
@@ -146,6 +150,7 @@ int main(int argc, char *argv[]){
       }
     }
 
+    /* Accepts file in disk or stdout as compression destiny */
     compress_arch(archive_path, TMP_FILENAME, verbose);
     return remove(TMP_FILENAME) == 0 ? 0 : 1;
 
@@ -153,18 +158,20 @@ int main(int argc, char *argv[]){
   } else if (strcmp(action, "u") == 0){
     UnpackArgs a = { verbose };
 
+    /* Unpack from stdin */
     if (is_stream) {
       if (archive_format == ARCHIVE_SZT) {
-        /* decompress_in_ram_and_run requires a real file */
+        /* decompress_in_ram_and_run requires a file in disk */
         if (buffer_stdin_to_file(TMP_FILENAME) != 0) return 1;
         ret = decompress_in_ram_and_run(TMP_FILENAME, do_unpack, &a, verbose);
         remove(TMP_FILENAME);
         return ret == 0 ? 0 : 1;
       }
       /* Read from stdin */
-      return just_run("-", "rb", do_unpack, &a) == 0 ? 0 : 1;
+      return just_run(archive_path, "rb", do_unpack, &a) == 0 ? 0 : 1;
     }
 
+    /* Unpack from disk, .sar or .szt */
     if (archive_format == ARCHIVE_SAR) {
       return just_run(archive_path, "rb", do_unpack, &a) == 0 ? 0 : 1;
     } else if (archive_format == ARCHIVE_SZT) {
@@ -190,7 +197,7 @@ int main(int argc, char *argv[]){
         return ret == 0 ? 0 : 1;
       }
       /* Read from stdin */
-      return just_run("-", "rb", do_list, NULL) == 0 ? 0 : 1;
+      return just_run(archive_path, "rb", do_list, NULL) == 0 ? 0 : 1;
     }
 
     if (archive_format == ARCHIVE_SAR) {
@@ -220,7 +227,7 @@ int main(int argc, char *argv[]){
         return ret == 0 ? 0 : 1;
       }
       /* Read from stdin */
-      return just_run("-", "rb", do_grab, &a) == 0 ? 0 : 1;
+      return just_run(archive_path, "rb", do_grab, &a) == 0 ? 0 : 1;
     }
 
     if (archive_format == ARCHIVE_SAR) {

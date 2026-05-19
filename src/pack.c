@@ -28,10 +28,10 @@ typedef struct {
 } WorkItem;
 
 typedef struct {
-  WorkItem *items;        /* this thread's slice of the work array  */
-  int       count;        /* number of items in the slice           */
+  WorkItem *items; /* this thread's slice of the work array  */
+  int       count; /* number of items in the slice           */
   int       verbose;
-  int       result;       /* thread writes 0 or -1 here             */
+  int       result; /* thread writes 0 or -1 here             */
 } ThreadArgs;
 
 /* ------------------------------------------------------------------ */
@@ -44,7 +44,7 @@ typedef int (*DataChunkCb)(const void *buf, size_t n, void *ctx);
 
 /* Context for write_chunk: write data chunks to an archive FILE* */
 typedef struct {
-  FILE       *dst;
+  FILE *dst;
   const char *path;
 } WriteCtx;
 
@@ -264,8 +264,8 @@ static int collect_files(const char *filepath, WorkItem **items, int *count,
 
     /* grow the array if needed */
     if (*count == *capacity) {
-      int       new_cap = *capacity == 0 ? 64 : *capacity * 2;
-      WorkItem *tmp     = realloc(*items, new_cap * sizeof(WorkItem));
+      int new_cap = *capacity == 0 ? 64 : *capacity * 2;
+      WorkItem *tmp = realloc(*items, new_cap * sizeof(WorkItem));
       if (tmp == NULL) {
         perror("realloc");
         return -1;
@@ -314,13 +314,13 @@ static int collect_files(const char *filepath, WorkItem **items, int *count,
 
   /* grow the array if needed */
   if (*count == *capacity) {
-    int       new_cap = *capacity == 0 ? 64 : *capacity * 2;
-    WorkItem *tmp     = realloc(*items, new_cap * sizeof(WorkItem));
+    int new_cap = *capacity == 0 ? 64 : *capacity * 2;
+    WorkItem *tmp = realloc(*items, new_cap * sizeof(WorkItem));
     if (tmp == NULL) {
       perror("realloc");
       return -1;
     }
-    *items    = tmp;
+    *items = tmp;
     *capacity = new_cap;
   }
 
@@ -586,10 +586,10 @@ int pack_threads(const char *archive_path, const char **filepaths, int count,
   offset = 0;
 
   for (t = 0; t < n_threads; t++) {
-    args[t].items   = &items[offset];
-    args[t].count   = base + (t < extra ? 1 : 0);
+    args[t].items = &items[offset];
+    args[t].count = base + (t < extra ? 1 : 0);
     args[t].verbose = verbose;
-    args[t].result  = 0;
+    args[t].result = 0;
     offset += args[t].count;
 
     if (pthread_create(&threads[t], NULL, worker_thread, &args[t]) != 0) {
@@ -673,7 +673,7 @@ int pack_file(FILE *archive, const char *filepath, int sparse, int verbose){
       (uint32_t)st.st_mode, (uint32_t)st.st_uid, (uint32_t)st.st_gid,
       (int64_t)st.st_mtime);
     header.checksum = checksum_compute(&header, NULL, 0,
-                                       linkbuf, (uint64_t)linklen);
+      linkbuf, (uint64_t)linklen);
 
     /* Write header */
     if (fwrite(&header, sizeof(header), 1, archive) != 1) {
@@ -753,7 +753,7 @@ int pack_file(FILE *archive, const char *filepath, int sparse, int verbose){
   if (holes && hole_count > 0)
     XXH64_update(&state, holes, hole_count * sizeof(HoleEntry));
   if (foreach_data_region(src, filepath, holes, hole_count, (uint64_t)st.st_size,
-        buf, sizeof(buf), hash_chunk, &state) != 0) {
+    buf, sizeof(buf), hash_chunk, &state) != 0) {
     fclose(src); free(holes); return -1;
   }
   header.checksum = (uint64_t)XXH64_digest(&state);
