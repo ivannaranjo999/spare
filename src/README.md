@@ -1,4 +1,20 @@
 # File & function documentation
+
+## Index
+- [sar.h](#sarh)
+- [config.h](#configh)
+- [main.c](#mainc)
+- [helpers.c](#helpersc)
+- [pack.c](#packc)
+- [unpack.c](#unpackc)
+- [list.c](#listc)
+- [grab.c](#grabc)
+- [insert.c](#insertc)
+- [compression.c](#compressionc)
+- [decompression.c](#decompressionc)
+
+---
+
 ## sar.h
 This file is the main header of SAR. It is included in all C files and contains declarations that are used at least in two of them.
 
