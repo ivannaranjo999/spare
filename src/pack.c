@@ -449,9 +449,10 @@ static int write_item(const WorkItem *w, int verbose){
     w->stored_size);
 
   if (verbose)
-    printf("packed: '%s' (%llu + %llu bytes)\n",
+    printf("packed: '%s' (%llu + %llu + %llu bytes)\n",
       w->filepath,
       (unsigned long long)sizeof(FileHeader),
+      (unsigned long long)(w->hole_count * sizeof(HoleEntry)),
       (unsigned long long)w->stored_size);
 
   return 0;
@@ -785,8 +786,10 @@ int pack_file(FILE *archive, const char *filepath, int sparse, int verbose){
   free(holes);
 
   if (verbose)
-    printf("packed: '%s' (%llu + %llu bytes)\n",
-      filepath, (unsigned long long)sizeof(FileHeader),
+    printf("packed: '%s' (%llu + %llu + %llu bytes)\n",
+      filepath,
+      (unsigned long long)sizeof(FileHeader),
+      (unsigned long long)(hole_count * sizeof(HoleEntry)),
       (unsigned long long)stored_size);
 
   return 0;
