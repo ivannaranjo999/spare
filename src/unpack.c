@@ -423,11 +423,8 @@ int unpack_file(FILE *archive, DirCache *cache , int verbose){
   }
 
   if(verbose)
-    printf("unpacked: '%s' (%llu + %llu + %llu bytes)\n",
-      header.filename,
-      (unsigned long long)sizeof(FileHeader),
-      (unsigned long long)(header.hole_count * sizeof(HoleEntry)),
-      (unsigned long long)header.stored_size);
+    printf("unpacked: '%s' (%llu bytes)\n",
+      header.filename, (unsigned long long)header.file_size);
 
   return 1;
 }
