@@ -22,12 +22,7 @@ BLOCK_SIZE=$(stat -c '%B' "$FILE")
 ALLOCATED_BYTES=$(( BLOCKS * BLOCK_SIZE ))
 
 if [ "$LOGICAL_SIZE" -eq 0 ]; then
-  echo "file $FILE"
-  echo "sparse false"
-  echo "logical_size 0"
-  echo "allocated 0"
-  echo "holes 0"
-  echo "sparseness 0.000%"
+  echo "file=$FILE sparse=false logical_size=0 allocated=0 holes=0 sparseness=0.000%"
   exit 0
 fi
 
@@ -42,11 +37,6 @@ else
   SPARSENESS=0.000
 fi
 
-echo "file $FILE"
-echo "sparse $SPARSE"
-echo "logical_size $LOGICAL_SIZE"
-echo "allocated $ALLOCATED_BYTES"
-echo "holes $HOLE_BYTES"
-echo "sparseness $SPARSENESS%"
+echo "file=$FILE sparse=$SPARSE logical_size=$LOGICAL_SIZE allocated=$ALLOCATED_BYTES holes=$HOLE_BYTES sparseness=$SPARSENESS%"
 
 exit 0
