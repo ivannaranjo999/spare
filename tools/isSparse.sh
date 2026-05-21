@@ -16,6 +16,7 @@ if [ ! -f "$FILE" ]; then
   exit 1
 fi
 
+MIN_SPARSE_SIZE=512
 LOGICAL_SIZE=$(stat -c '%s' "$FILE")
 BLOCKS=$(stat -c '%b' "$FILE")
 BLOCK_SIZE=$(stat -c '%B' "$FILE")
@@ -29,7 +30,7 @@ fi
 HOLE_BYTES=$(( LOGICAL_SIZE - ALLOCATED_BYTES ))
 SPARSENESS=$(awk "BEGIN { printf \"%.3f\", ($HOLE_BYTES / $LOGICAL_SIZE) * 100 }")
 
-if [ "$ALLOCATED_BYTES" -lt "$LOGICAL_SIZE" ]; then
+if [ "$ALLOCATED_BYTES" -lt "$LOGICAL_SIZE" ]  && [ "$LOGICAL_SIZE" -gt "$MIN_SPARSE_SIZE" ]; then
   SPARSE=true
 else
   SPARSE=false
