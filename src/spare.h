@@ -22,8 +22,8 @@
 
 #include "config.h"
 
-#define SPARE_MAGIC "SAR" /* Magic string at start of every header */
-#define SPARE_VERSION 3 /* format version */
+#define SPARE_MAGIC "SPA" /* Magic string at start of every header */
+#define SPARE_VERSION 4 /* format version */
 #define SPARE_MAX_PATH 4096 /* max length of stored path */
 
 extern int g_nthreads; /* Worker thread count, set by -j flag */

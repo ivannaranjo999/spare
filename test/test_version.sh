@@ -32,46 +32,46 @@ expect_err() {
 # Setup: valid v2 archive
 mkdir -p "$WORK/src"
 echo "hello" > "$WORK/src/a.txt"
-(cd "$WORK" && "$SPARE" p valid.sar src)
+(cd "$WORK" && "$SPARE" p valid.spa src)
 
 # Build a wrong-version archive: pack a real one, then patch byte 3 (version) to 99
-cp "$WORK/valid.sar" "$WORK/badver.sar"
-printf '\x63' | dd of="$WORK/badver.sar" bs=1 seek=3 count=1 conv=notrunc 2>/dev/null
+cp "$WORK/valid.spa" "$WORK/badver.spa"
+printf '\x63' | dd of="$WORK/badver.spa" bs=1 seek=3 count=1 conv=notrunc 2>/dev/null
 
 # Build a bad-magic archive: same size as a real header but first 3 bytes are wrong
-cp "$WORK/valid.sar" "$WORK/badmagic.sar"
-printf 'XXX' | dd of="$WORK/badmagic.sar" bs=1 seek=0 count=3 conv=notrunc 2>/dev/null
+cp "$WORK/valid.spa" "$WORK/badmagic.spa"
+printf 'XXX' | dd of="$WORK/badmagic.spa" bs=1 seek=0 count=3 conv=notrunc 2>/dev/null
 
 # --- 1-4: valid archive, all read actions succeed ---
 out="$WORK/t1" && mkdir "$out"
-(cd "$out" && "$SPARE" u "$WORK/valid.sar") > /dev/null 2>&1
+(cd "$out" && "$SPARE" u "$WORK/valid.spa") > /dev/null 2>&1
 check "valid: u exits 0" "$?" "0"
 
-listing=$(cd "$WORK" && "$SPARE" l valid.sar 2>/dev/null)
+listing=$(cd "$WORK" && "$SPARE" l valid.spa 2>/dev/null)
 check "valid: l exits 0" "$?" "0"
 
 out="$WORK/t3" && mkdir "$out"
-(cd "$out" && "$SPARE" g "$WORK/valid.sar" src/a.txt) > /dev/null 2>&1
+(cd "$out" && "$SPARE" g "$WORK/valid.spa" src/a.txt) > /dev/null 2>&1
 check "valid: g exits 0" "$?" "0"
 
-(cd "$WORK" && "$SPARE" i valid.sar src/a.txt) > /dev/null 2>&1
+(cd "$WORK" && "$SPARE" i valid.spa src/a.txt) > /dev/null 2>&1
 check "valid: i exits 0" "$?" "0"
 
 # --- 5-8: wrong version, all read actions reject with version error ---
 out="$WORK/t5" && mkdir "$out"
-expect_err "badver: u rejects"    "version" "$SPARE" u "$WORK/badver.sar"
-expect_err "badver: l rejects"    "version" "$SPARE" l "$WORK/badver.sar"
+expect_err "badver: u rejects"    "version" "$SPARE" u "$WORK/badver.spa"
+expect_err "badver: l rejects"    "version" "$SPARE" l "$WORK/badver.spa"
 out="$WORK/t7" && mkdir "$out"
-expect_err "badver: g rejects"    "version" "$SPARE" g "$WORK/badver.sar" src/a.txt
-expect_err "badver: i rejects"    "version" "$SPARE" i "$WORK/badver.sar" src/a.txt
+expect_err "badver: g rejects"    "version" "$SPARE" g "$WORK/badver.spa" src/a.txt
+expect_err "badver: i rejects"    "version" "$SPARE" i "$WORK/badver.spa" src/a.txt
 
 # --- 9: bad magic, rejected with magic error ---
-expect_err "badmagic: u rejects"  "magic"   "$SPARE" u "$WORK/badmagic.sar"
-expect_err "badmagic: l rejects"  "magic"   "$SPARE" l "$WORK/badmagic.sar"
+expect_err "badmagic: u rejects"  "magic"   "$SPARE" u "$WORK/badmagic.spa"
+expect_err "badmagic: l rejects"  "magic"   "$SPARE" l "$WORK/badmagic.spa"
 
 # --- 10: empty file, rejected (cannot read header) ---
-touch "$WORK/empty.sar"
-expect_err "empty: u rejects"     "."       "$SPARE" u "$WORK/empty.sar"
+touch "$WORK/empty.spa"
+expect_err "empty: u rejects"     "."       "$SPARE" u "$WORK/empty.spa"
 
 # --- cleanup ---
 rm -rf "$WORK"

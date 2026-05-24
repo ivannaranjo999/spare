@@ -16,12 +16,12 @@ fail() { echo "FAIL: $1"; FAIL=$((FAIL+1)); }
 mkdir -p "$WORK/src/subdir"
 echo "hello extract" > "$WORK/src/a.txt"
 echo "nested file"  > "$WORK/src/subdir/b.txt"
-(cd "$WORK" && "$SPARE" p archive.sar src/a.txt src/subdir/b.txt 2>/dev/null)
-[ -f "$WORK/archive.sar" ] || die "failed to create test archive"
+(cd "$WORK" && "$SPARE" p archive.spa src/a.txt src/subdir/b.txt 2>/dev/null)
+[ -f "$WORK/archive.spa" ] || die "failed to create test archive"
 
 # --- 1: u -C to existing directory ---
 out="$WORK/t1" && mkdir "$out"
-(cd "$WORK" && "$SPARE" u -C "$out" archive.sar 2>/dev/null)
+(cd "$WORK" && "$SPARE" u -C "$out" archive.spa 2>/dev/null)
 if [ "$(cat "$out/src/a.txt" 2>/dev/null)" = "hello extract" ]; then
   ok "u -C: file extracted to target dir"
 else
@@ -37,7 +37,7 @@ fi
 
 # --- 3: u -C does not pollute current directory ---
 out="$WORK/t3" && mkdir "$out"
-(cd "$WORK" && "$SPARE" u -C "$out" archive.sar 2>/dev/null)
+(cd "$WORK" && "$SPARE" u -C "$out" archive.spa 2>/dev/null)
 if [ ! -f "$WORK/src/a.txt" ] || [ -f "$WORK/a.txt" ]; then
   # src/a.txt was created during setup so it exists; check that unpack didn't
   # write anything NEW outside the target dir by checking a file that only
@@ -49,7 +49,7 @@ fi
 
 # --- 4: u -C with relative archive path ---
 out="$WORK/t4" && mkdir "$out"
-(cd "$WORK" && "$SPARE" u -C "$out" archive.sar 2>/dev/null)
+(cd "$WORK" && "$SPARE" u -C "$out" archive.spa 2>/dev/null)
 if [ "$(cat "$out/src/a.txt" 2>/dev/null)" = "hello extract" ]; then
   ok "u -C: relative archive path resolved correctly"
 else
@@ -57,7 +57,7 @@ else
 fi
 
 # --- 5: u -C to non-existing directory exits non-zero ---
-if (cd "$WORK" && "$SPARE" u -C "$WORK/does_not_exist" archive.sar 2>/dev/null); then
+if (cd "$WORK" && "$SPARE" u -C "$WORK/does_not_exist" archive.spa 2>/dev/null); then
   fail "u -C: non-existing dir should fail"
 else
   ok "u -C: non-existing dir rejected"
@@ -65,7 +65,7 @@ fi
 
 # --- 6: g -C extracts grabbed file to target dir ---
 out="$WORK/t6" && mkdir "$out"
-(cd "$WORK" && "$SPARE" g -C "$out" archive.sar src/a.txt 2>/dev/null)
+(cd "$WORK" && "$SPARE" g -C "$out" archive.spa src/a.txt 2>/dev/null)
 if [ "$(cat "$out/src/a.txt" 2>/dev/null)" = "hello extract" ]; then
   ok "g -C: grabbed file extracted to target dir"
 else

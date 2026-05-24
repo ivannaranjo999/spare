@@ -33,9 +33,9 @@ echo "hello checksum" > "$WORK/src/hello.txt"
 ln -s "hello.txt" "$WORK/src/link"
 
 # --- 1: normal single-threaded pack + unpack ---
-(cd "$WORK" && "$SPARE" p archive.sar src/hello.txt 2>/dev/null)
+(cd "$WORK" && "$SPARE" p archive.spa src/hello.txt 2>/dev/null)
 out="$WORK/t1" && mkdir "$out"
-(cd "$out" && "$SPARE" u "$WORK/archive.sar" 2>/dev/null)
+(cd "$out" && "$SPARE" u "$WORK/archive.spa" 2>/dev/null)
 if [ "$(cat "$out/src/hello.txt" 2>/dev/null)" = "hello checksum" ]; then
   ok "normal unpack (single-threaded)"
 else
@@ -43,40 +43,40 @@ else
 fi
 
 # --- 2: corrupt data byte -> unpack must fail ---
-cp "$WORK/archive.sar" "$WORK/corrupt_data.sar"
-corrupt_byte "$WORK/corrupt_data.sar" "$HEADER_SIZE"
+cp "$WORK/archive.spa" "$WORK/corrupt_data.spa"
+corrupt_byte "$WORK/corrupt_data.spa" "$HEADER_SIZE"
 out="$WORK/t2" && mkdir "$out"
-if (cd "$out" && "$SPARE" u "$WORK/corrupt_data.sar" 2>/dev/null); then
+if (cd "$out" && "$SPARE" u "$WORK/corrupt_data.spa" 2>/dev/null); then
   fail "corrupt data not detected"
 else
   ok "corrupt data detected"
 fi
 
 # --- 3: corrupt header field (mtime) -> unpack must fail ---
-cp "$WORK/archive.sar" "$WORK/corrupt_hdr.sar"
-corrupt_byte "$WORK/corrupt_hdr.sar" "$MTIME_OFFSET"
+cp "$WORK/archive.spa" "$WORK/corrupt_hdr.spa"
+corrupt_byte "$WORK/corrupt_hdr.spa" "$MTIME_OFFSET"
 out="$WORK/t3" && mkdir "$out"
-if (cd "$out" && "$SPARE" u "$WORK/corrupt_hdr.sar" 2>/dev/null); then
+if (cd "$out" && "$SPARE" u "$WORK/corrupt_hdr.spa" 2>/dev/null); then
   fail "corrupt header not detected"
 else
   ok "corrupt header detected"
 fi
 
 # --- 4: corrupt stored checksum field itself -> unpack must fail ---
-cp "$WORK/archive.sar" "$WORK/corrupt_cksum.sar"
+cp "$WORK/archive.spa" "$WORK/corrupt_cksum.spa"
 # checksum field is at CHECKSUM_OFFSET (stored_size and hole_count follow it)
-corrupt_byte "$WORK/corrupt_cksum.sar" $CHECKSUM_OFFSET
+corrupt_byte "$WORK/corrupt_cksum.spa" $CHECKSUM_OFFSET
 out="$WORK/t4" && mkdir "$out"
-if (cd "$out" && "$SPARE" u "$WORK/corrupt_cksum.sar" 2>/dev/null); then
+if (cd "$out" && "$SPARE" u "$WORK/corrupt_cksum.spa" 2>/dev/null); then
   fail "corrupt checksum field not detected"
 else
   ok "corrupt checksum field detected"
 fi
 
 # --- 5: normal multi-threaded pack + unpack ---
-(cd "$WORK" && "$SPARE" p -j 2 mt.sar src/hello.txt 2>/dev/null)
+(cd "$WORK" && "$SPARE" p -j 2 mt.spa src/hello.txt 2>/dev/null)
 out="$WORK/t5" && mkdir "$out"
-(cd "$out" && "$SPARE" u "$WORK/mt.sar" 2>/dev/null)
+(cd "$out" && "$SPARE" u "$WORK/mt.spa" 2>/dev/null)
 if [ "$(cat "$out/src/hello.txt" 2>/dev/null)" = "hello checksum" ]; then
   ok "normal unpack (multi-threaded)"
 else
@@ -84,19 +84,19 @@ else
 fi
 
 # --- 6: corrupt data in multi-threaded archive -> unpack must fail ---
-cp "$WORK/mt.sar" "$WORK/mt_corrupt.sar"
-corrupt_byte "$WORK/mt_corrupt.sar" "$HEADER_SIZE"
+cp "$WORK/mt.spa" "$WORK/mt_corrupt.spa"
+corrupt_byte "$WORK/mt_corrupt.spa" "$HEADER_SIZE"
 out="$WORK/t6" && mkdir "$out"
-if (cd "$out" && "$SPARE" u "$WORK/mt_corrupt.sar" 2>/dev/null); then
+if (cd "$out" && "$SPARE" u "$WORK/mt_corrupt.spa" 2>/dev/null); then
   fail "corrupt data in mt archive not detected"
 else
   ok "corrupt data in mt archive detected"
 fi
 
 # --- 7: symlink pack + unpack ---
-(cd "$WORK" && "$SPARE" p link.sar src/link 2>/dev/null)
+(cd "$WORK" && "$SPARE" p link.spa src/link 2>/dev/null)
 out="$WORK/t7" && mkdir "$out"
-(cd "$out" && "$SPARE" u "$WORK/link.sar" 2>/dev/null)
+(cd "$out" && "$SPARE" u "$WORK/link.spa" 2>/dev/null)
 if [ "$(readlink "$out/src/link" 2>/dev/null)" = "hello.txt" ]; then
   ok "symlink unpack"
 else
@@ -104,19 +104,19 @@ else
 fi
 
 # --- 8: corrupt symlink data -> unpack must fail ---
-cp "$WORK/link.sar" "$WORK/link_corrupt.sar"
-corrupt_byte "$WORK/link_corrupt.sar" "$HEADER_SIZE"
+cp "$WORK/link.spa" "$WORK/link_corrupt.spa"
+corrupt_byte "$WORK/link_corrupt.spa" "$HEADER_SIZE"
 out="$WORK/t8" && mkdir "$out"
-if (cd "$out" && "$SPARE" u "$WORK/link_corrupt.sar" 2>/dev/null); then
+if (cd "$out" && "$SPARE" u "$WORK/link_corrupt.spa" 2>/dev/null); then
   fail "corrupt symlink data not detected"
 else
   ok "corrupt symlink data detected"
 fi
 
 # --- 9: symlink pack via pipeline (p -) + unpack via pipeline (u -) ---
-(cd "$WORK" && "$SPARE" p - src/link 2>/dev/null > link_pipe.sar)
+(cd "$WORK" && "$SPARE" p - src/link 2>/dev/null > link_pipe.spa)
 out="$WORK/t9" && mkdir "$out"
-(cd "$out" && cat "$WORK/link_pipe.sar" | "$SPARE" u - 2>/dev/null)
+(cd "$out" && cat "$WORK/link_pipe.spa" | "$SPARE" u - 2>/dev/null)
 if [ "$(readlink "$out/src/link" 2>/dev/null)" = "hello.txt" ]; then
   ok "symlink pack/unpack via pipeline"
 else
@@ -124,10 +124,10 @@ else
 fi
 
 # --- 10: corrupt symlink data in pipeline archive -> unpack must fail ---
-cp "$WORK/link_pipe.sar" "$WORK/link_pipe_corrupt.sar"
-corrupt_byte "$WORK/link_pipe_corrupt.sar" "$HEADER_SIZE"
+cp "$WORK/link_pipe.spa" "$WORK/link_pipe_corrupt.spa"
+corrupt_byte "$WORK/link_pipe_corrupt.spa" "$HEADER_SIZE"
 out="$WORK/t10" && mkdir "$out"
-if (cd "$out" && cat "$WORK/link_pipe_corrupt.sar" | "$SPARE" u - 2>/dev/null); then
+if (cd "$out" && cat "$WORK/link_pipe_corrupt.spa" | "$SPARE" u - 2>/dev/null); then
   fail "corrupt symlink data in pipeline not detected"
 else
   ok "corrupt symlink data in pipeline detected"

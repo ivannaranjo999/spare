@@ -66,7 +66,7 @@ The entry point of SPARE. It is in charge of parsing the input arguments, which 
 
 **u**: unpack
 
-*.sar (file or stream):*
+*.spa (file or stream):*
 - `just_run` > `do_unpack` > `unpack` > `unpack_file`
 
 *.szt (file):*
@@ -86,7 +86,7 @@ The entry point of SPARE. It is in charge of parsing the input arguments, which 
 
 **l**: list
 
-*.sar (file or stream):*
+*.spa (file or stream):*
 - `just_run` > `do_list` > `list` > `get_filename`
 
 *.szt (file):*
@@ -100,7 +100,7 @@ The entry point of SPARE. It is in charge of parsing the input arguments, which 
 
 **g**: grab
 
-*.sar (file or stream):*
+*.spa (file or stream):*
 - `just_run` > `do_grab` > `grab` > `unpack_file`
 
 *.szt (file):*
@@ -114,7 +114,7 @@ The entry point of SPARE. It is in charge of parsing the input arguments, which 
 
 **i**: insert
 
-*.sar:*
+*.spa:*
 - `just_run` > `do_pack` > `pack` > `pack_file`
 
 *.szt:*
@@ -131,10 +131,10 @@ These functions are **action functions**, which are required to make the followi
 - just_run
 
 ### detect_archive_format
-Returns the format of the given file, it can be a .szt (compressed .sar) or .sar. If none of both, return unknown or not existing.
+Returns the format of the given file, it can be a .szt (compressed .spa) or .spa. If none of both, return unknown or not existing.
 
 ### check_archive_version
-Parses the version of the given file. This is required to ensure spare binary do not accept a .sar file that has a different FileHeader struct.
+Parses the version of the given file. This is required to ensure spare binary do not accept a .spa file that has a different FileHeader struct.
 
 ### decompress_in_ram_and_run
 Generic function to decompress an archive to RAM and perform the desired action function.

@@ -23,8 +23,8 @@ ln -s "a.txt" "$WORK/src/link"
 # --- 1: uid preserved ---
 src_uid=$(stat -c '%u' "$WORK/src/a.txt")
 out="$WORK/t1" && mkdir "$out"
-(cd "$WORK" && "$SPARE" p t1.sar src/a.txt)
-(cd "$out"  && "$SPARE" u "$WORK/t1.sar")
+(cd "$WORK" && "$SPARE" p t1.spa src/a.txt)
+(cd "$out"  && "$SPARE" u "$WORK/t1.spa")
 check "uid preserved" "$(stat -c '%u' "$out/src/a.txt")" "$src_uid"
 
 # --- 2: gid preserved (primary group) ---
@@ -39,8 +39,8 @@ if [ -n "$secondary_gid" ]; then
   echo "secondary group content" > "$WORK/src/b.txt"
   chown ":$secondary_gid" "$WORK/src/b.txt"
   out3="$WORK/t3" && mkdir "$out3"
-  (cd "$WORK" && "$SPARE" p t3.sar src/b.txt)
-  (cd "$out3"  && "$SPARE" u "$WORK/t3.sar")
+  (cd "$WORK" && "$SPARE" p t3.spa src/b.txt)
+  (cd "$out3"  && "$SPARE" u "$WORK/t3.spa")
   check "gid secondary group preserved" \
     "$(stat -c '%g' "$out3/src/b.txt")" "$secondary_gid"
 else
@@ -51,8 +51,8 @@ fi
 sym_uid=$(stat -c '%u' "$WORK/src/link")
 sym_gid=$(stat -c '%g' "$WORK/src/link")
 out4="$WORK/t4" && mkdir "$out4"
-(cd "$WORK" && "$SPARE" p t4.sar src/link)
-(cd "$out4"  && "$SPARE" u "$WORK/t4.sar")
+(cd "$WORK" && "$SPARE" p t4.spa src/link)
+(cd "$out4"  && "$SPARE" u "$WORK/t4.spa")
 check "symlink uid preserved" "$(stat -c '%u' "$out4/src/link")" "$sym_uid"
 check "symlink gid preserved" "$(stat -c '%g' "$out4/src/link")" "$sym_gid"
 

@@ -61,8 +61,8 @@ roundtrip "pz-/u--z multi" "-j 4 pz -" "u - -z" "a.txt"
 roundtrip "pz-/u--z multi" "-j 4 pz -" "u - -z" "subdir/b.txt"
 
 # --- test 5: l - (list uncompressed from stdin) ---
-(cd "$WORK" && "$SPARE" p archive.sar src)
-listing=$(cd "$WORK" && "$SPARE" l - <archive.sar)
+(cd "$WORK" && "$SPARE" p archive.spa src)
+listing=$(cd "$WORK" && "$SPARE" l - <archive.spa)
 check "l - contains a.txt" "$(echo "$listing" | grep -c 'a.txt')" "1"
 check "l - contains subdir/b.txt" "$(echo "$listing" | grep -c 'subdir/b.txt')" "1"
 check "l - contains c.txt" "$(echo "$listing" | grep -c 'c.txt')" "1"
@@ -76,8 +76,8 @@ check "l - -z contains subdir/b.txt" "$(echo "$listing" | grep -c 'subdir/b.txt'
 # --- test 7: p - redirected to file, then normal unpack ---
 out7="$WORK/out7"
 mkdir -p "$out7"
-(cd "$WORK" && "$SPARE" p - src) >"$WORK/redir.sar"
-(cd "$out7" && "$SPARE" u "$WORK/redir.sar")
+(cd "$WORK" && "$SPARE" p - src) >"$WORK/redir.spa"
+(cd "$out7" && "$SPARE" u "$WORK/redir.spa")
 check "p - redirect, u file" "$(cat "$WORK/src/a.txt")" "$(cat "$out7/src/a.txt")"
 
 # --- test 8: pz - redirected to file, u - -z to verify ---
@@ -91,8 +91,8 @@ check "pz - redirect, u - -z" "$(cat "$WORK/src/subdir/b.txt")" "$(cat "$out8/sr
 # --- test 9: g - (grab from uncompressed stdin) ---
 out9="$WORK/out9"
 mkdir -p "$out9"
-(cd "$WORK" && "$SPARE" p archive.sar src)
-(cd "$out9" && "$SPARE" g - src/a.txt <"$WORK/archive.sar")
+(cd "$WORK" && "$SPARE" p archive.spa src)
+(cd "$out9" && "$SPARE" g - src/a.txt <"$WORK/archive.spa")
 check "g - grab a.txt" "$(cat "$WORK/src/a.txt")" "$(cat "$out9/src/a.txt")"
 
 # --- test 10: g - -z (grab from compressed stdin) ---

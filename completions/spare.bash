@@ -51,7 +51,7 @@ _spare() {
   if (( pos == 2 )); then
     # Archive slot: suggest existing .spare/.szt files and "-" for all actions
     local archives
-    archives=( $(compgen -f -X "!*.sar" -- "$cur")
+    archives=( $(compgen -f -X "!*.spa" -- "$cur")
                $(compgen -f -X "!*.szt" -- "$cur") )
     [[ "$cur" == -* || "$cur" == "" ]] && archives+=( "-" )
     COMPREPLY=( "${archives[@]}" )

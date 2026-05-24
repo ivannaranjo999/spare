@@ -117,7 +117,7 @@ int main(int argc, char *argv[]){
   }
 
   /* If -C is set, resolve archive path to absolute before chdir so relative
-   * paths like 'archive.sar' still work after the directory change */
+   * paths like 'archive.spa' still work after the directory change */
   if (extract_dir != NULL && !is_stream) {
     if (realpath(archive_path, abs_archive) == NULL) {
       perror(archive_path);
@@ -207,7 +207,7 @@ int main(int argc, char *argv[]){
       return just_run(archive_path, "rb", do_unpack, &a) == 0 ? 0 : 1;
     }
 
-    /* Unpack from disk, .sar or .szt */
+    /* Unpack from disk, .spa or .szt */
     if (archive_format == ARCHIVE_SAR) {
       return just_run(archive_path, "rb", do_unpack, &a) == 0 ? 0 : 1;
     } else if (archive_format == ARCHIVE_SZT) {

@@ -42,9 +42,9 @@ mkdir -p "$WORK/src"
 make_sparse_file "$WORK/src/sparse.bin"
 
 # --- 1: pack -S + unpack: data content must be preserved ---
-(cd "$WORK" && "$SPARE" p -S archive_s.sar src/sparse.bin 2>/dev/null)
+(cd "$WORK" && "$SPARE" p -S archive_s.spa src/sparse.bin 2>/dev/null)
 out="$WORK/t1" && mkdir "$out"
-(cd "$out" && "$SPARE" u "$WORK/archive_s.sar" 2>/dev/null)
+(cd "$out" && "$SPARE" u "$WORK/archive_s.spa" 2>/dev/null)
 result=$(python3 -c "
 import sys
 try:
@@ -63,9 +63,9 @@ else
 fi
 
 # --- 2: archive with -S must be smaller than without -S for a sparse file ---
-(cd "$WORK" && "$SPARE" p archive_dense.sar src/sparse.bin 2>/dev/null)
-size_sparse=$(stat -c%s "$WORK/archive_s.sar" 2>/dev/null || stat -f%z "$WORK/archive_s.sar")
-size_dense=$(stat -c%s "$WORK/archive_dense.sar" 2>/dev/null || stat -f%z "$WORK/archive_dense.sar")
+(cd "$WORK" && "$SPARE" p archive_dense.spa src/sparse.bin 2>/dev/null)
+size_sparse=$(stat -c%s "$WORK/archive_s.spa" 2>/dev/null || stat -f%z "$WORK/archive_s.spa")
+size_dense=$(stat -c%s "$WORK/archive_dense.spa" 2>/dev/null || stat -f%z "$WORK/archive_dense.spa")
 if [ "$size_sparse" -lt "$size_dense" ]; then
   ok "sparse archive smaller than dense archive"
 else
@@ -75,7 +75,7 @@ fi
 
 # --- 3: pack -S without -S: dense archive still unpacks correctly ---
 out="$WORK/t3" && mkdir "$out"
-(cd "$out" && "$SPARE" u "$WORK/archive_dense.sar" 2>/dev/null)
+(cd "$out" && "$SPARE" u "$WORK/archive_dense.spa" 2>/dev/null)
 result=$(python3 -c "
 try:
     data = open('$out/src/sparse.bin', 'rb').read()
@@ -93,21 +93,21 @@ else
 fi
 
 # --- 4: corrupt data byte in sparse archive -> unpack must fail ---
-cp "$WORK/archive_s.sar" "$WORK/corrupt_data_s.sar"
+cp "$WORK/archive_s.spa" "$WORK/corrupt_data_s.spa"
 # sizeof(FileHeader)=4152; HoleEntry[]=hole_count*16; data starts after that.
 # Read actual hole_count from the archive to find data offset.
 hole_count=$(python3 -c "
 import struct
-data = open('$WORK/archive_s.sar', 'rb').read()
+data = open('$WORK/archive_s.spa', 'rb').read()
 # hole_count is uint64 at offset 4144
 hc = struct.unpack_from('<Q', data, 4144)[0]
 print(hc)
 ")
 hole_map_size=$((hole_count * 16))
 data_offset=$((4152 + hole_map_size))
-corrupt_byte "$WORK/corrupt_data_s.sar" "$data_offset"
+corrupt_byte "$WORK/corrupt_data_s.spa" "$data_offset"
 out="$WORK/t4" && mkdir "$out"
-if (cd "$out" && "$SPARE" u "$WORK/corrupt_data_s.sar" 2>/dev/null); then
+if (cd "$out" && "$SPARE" u "$WORK/corrupt_data_s.spa" 2>/dev/null); then
   fail "corrupt data in sparse archive not detected"
 else
   ok "corrupt data in sparse archive detected"
@@ -115,19 +115,19 @@ fi
 
 # --- 5: corrupt hole map -> unpack must fail ---
 # HoleEntry[0].offset starts at offset 4152 in the archive
-cp "$WORK/archive_s.sar" "$WORK/corrupt_holes.sar"
-corrupt_byte "$WORK/corrupt_holes.sar" 4152
+cp "$WORK/archive_s.spa" "$WORK/corrupt_holes.spa"
+corrupt_byte "$WORK/corrupt_holes.spa" 4152
 out="$WORK/t5" && mkdir "$out"
-if (cd "$out" && "$SPARE" u "$WORK/corrupt_holes.sar" 2>/dev/null); then
+if (cd "$out" && "$SPARE" u "$WORK/corrupt_holes.spa" 2>/dev/null); then
   fail "corrupt hole map not detected"
 else
   ok "corrupt hole map detected"
 fi
 
 # --- 6: multithreaded pack -S + unpack: content preserved ---
-(cd "$WORK" && "$SPARE" p -S -j 2 mt_s.sar src/sparse.bin 2>/dev/null)
+(cd "$WORK" && "$SPARE" p -S -j 2 mt_s.spa src/sparse.bin 2>/dev/null)
 out="$WORK/t6" && mkdir "$out"
-(cd "$out" && "$SPARE" u "$WORK/mt_s.sar" 2>/dev/null)
+(cd "$out" && "$SPARE" u "$WORK/mt_s.spa" 2>/dev/null)
 result=$(python3 -c "
 try:
     data = open('$out/src/sparse.bin', 'rb').read()

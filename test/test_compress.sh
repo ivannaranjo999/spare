@@ -44,9 +44,9 @@ check "szt has zstd magic" "$magic" "28b52ffd"
 # --- 4: SZT is smaller than SAR for compressible content ---
 # Use a repetitive file to guarantee compression wins
 python3 -c "print('AAAA' * 4096)" > "$WORK/src/big.txt"
-(cd "$WORK" && "$SPARE" p  size.sar src)
+(cd "$WORK" && "$SPARE" p  size.spa src)
 (cd "$WORK" && "$SPARE" pz size.szt src)
-sar_size=$(stat -c '%s' "$WORK/size.sar")
+sar_size=$(stat -c '%s' "$WORK/size.spa")
 szt_size=$(stat -c '%s' "$WORK/size.szt")
 if [ "$szt_size" -lt "$sar_size" ]; then
   ok "szt smaller than sar for compressible data"
@@ -70,7 +70,7 @@ check "pz+g content" "$(cat "$WORK/src/a.txt")" "$(cat "$out/src/a.txt")"
 # --- 7: single-thread and multi-thread pz produce same content after unpack ---
 out_s="$WORK/t7s" && mkdir "$out_s"
 out_m="$WORK/t7m" && mkdir "$out_m"
-(cd "$WORK" && "$SPARE" p    t7.sar src)
+(cd "$WORK" && "$SPARE" p    t7.spa src)
 (cd "$WORK" && "$SPARE" pz   t7s.szt src)
 (cd "$WORK" && "$SPARE" -j 4 pz t7m.szt src)
 (cd "$out_s" && "$SPARE" u "$WORK/t7s.szt")

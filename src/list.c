@@ -50,7 +50,7 @@ static int get_filename(FILE *archive){
 /* ----------------------------------------------------------------------------
  * list
  *
- * Shows all filenames inside a .sar file
+ * Shows all filenames inside a .spa file
  * Returns 0 on success, -1 on error.
  * ------------------------------------------------------------------------- */
 int list(FILE *archive){

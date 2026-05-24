@@ -1,9 +1,9 @@
 # SPARE - SParse Archive RElay 🍁
 SParse Archive RElay, SPARE, is a C tool that is able to **archive** a list of files and directories in a single file and **compress** it if desired. SPARE also allows actions like:
 
-- 🌲 Listing the contents of a `.sar|.sgz` file.
-- 🌳 Grabbing specific files or directories from a `.sar|.sgz` file.
-- 🌴 Inserting specific files or directories to a `.sar|.sgz` file.
+- 🌲 Listing the contents of a `.spa|.szt` file.
+- 🌳 Grabbing specific files or directories from a `.spa|.szt` file.
+- 🌴 Inserting specific files or directories to a `.spa|.szt` file.
 - 🌻 Flags for multithreading in packing and compression.
 
 The tool is used as follows:
@@ -11,12 +11,12 @@ The tool is used as follows:
 ```
 Usage:
 Actions:
-  spare p   <archive.sar> <file1..fileN>       Pack given files or folders to a SPARE archive.
+  spare p   <archive.spa> <file1..fileN>       Pack given files or folders to a SPARE archive.
   spare pz  <archive.szt> <file1..fileN>       Pack given files or folders to a SPARE archive and compress it.
-  spare u   <archive.sar|.szt>                 Unpack SPARE archive.
-  spare l   <archive.sar|.szt>                 List files contained in a SPARE archive.
-  spare g   <archive.sar|.szt> <file1..fileN>  Grab specific files contained in a SPARE archive.
-  spare i   <archive.sar|.szt> <file1..fileN>  Insert specific files to a SPARE archive.
+  spare u   <archive.spa|.szt>                 Unpack SPARE archive.
+  spare l   <archive.spa|.szt>                 List files contained in a SPARE archive.
+  spare g   <archive.spa|.szt> <file1..fileN>  Grab specific files contained in a SPARE archive.
+  spare i   <archive.spa|.szt> <file1..fileN>  Insert specific files to a SPARE archive.
 Flags:
   -v         verbose output.
   -j [N]     use N threads for packing and compression (default: all cores).
@@ -103,7 +103,7 @@ SPARE archives are just a flat binary file which is built as a concatenation of 
 
 | Field | Type | Offset | Description |
 |---|---|---|---|
-| magic | char[3] | 0 | Always `"SAR"` |
+| magic | char[3] | 0 | Always `"SPA"` |
 | version | uint8 | 3 | Format version (3) |
 | filename | char[4096] | 4 | Stored path |
 | mode | uint32 | 4100 | File permissions and type |

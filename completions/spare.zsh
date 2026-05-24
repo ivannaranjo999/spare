@@ -32,7 +32,7 @@ _spare() {
     archive)
       local -a opts
       opts=( '-:stdin/stdout' )
-      opts+=( *.sar(N) *.szt(N) )
+      opts+=( *.spa(N) *.szt(N) )
       _describe 'archive' opts
       ;;
     files)

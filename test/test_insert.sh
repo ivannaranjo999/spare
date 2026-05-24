@@ -24,16 +24,16 @@ mkdir -p "$WORK/extra"
 echo "extra file"  > "$WORK/extra/e.txt"
 
 # --- 1: i adds file to SAR, l confirms it is listed ---
-(cd "$WORK" && "$SPARE" p archive.sar src)
-(cd "$WORK" && "$SPARE" i archive.sar new.txt)
-listing=$(cd "$WORK" && "$SPARE" l archive.sar)
+(cd "$WORK" && "$SPARE" p archive.spa src)
+(cd "$WORK" && "$SPARE" i archive.spa new.txt)
+listing=$(cd "$WORK" && "$SPARE" l archive.spa)
 check "i sar: new file listed" "$(echo "$listing" | grep -c 'new.txt')" "1"
 
 # --- 2: i adds file to SAR, u can extract it ---
 out="$WORK/t2" && mkdir "$out"
-(cd "$WORK" && "$SPARE" p t2.sar src)
-(cd "$WORK" && "$SPARE" i t2.sar new.txt)
-(cd "$out"  && "$SPARE" u "$WORK/t2.sar")
+(cd "$WORK" && "$SPARE" p t2.spa src)
+(cd "$WORK" && "$SPARE" i t2.spa new.txt)
+(cd "$out"  && "$SPARE" u "$WORK/t2.spa")
 check "i sar: inserted content" "$(cat "$WORK/new.txt")" "$(cat "$out/new.txt")"
 
 # --- 3: original files still intact after insert ---
@@ -41,9 +41,9 @@ check "i sar: original a.txt intact" "$(cat "$WORK/src/a.txt")" "$(cat "$out/src
 
 # --- 4: i adds directory to SAR ---
 out="$WORK/t4" && mkdir "$out"
-(cd "$WORK" && "$SPARE" p t4.sar src)
-(cd "$WORK" && "$SPARE" i t4.sar extra)
-(cd "$out"  && "$SPARE" u "$WORK/t4.sar")
+(cd "$WORK" && "$SPARE" p t4.spa src)
+(cd "$WORK" && "$SPARE" i t4.spa extra)
+(cd "$out"  && "$SPARE" u "$WORK/t4.spa")
 check "i dir: extra/e.txt" "$(cat "$WORK/extra/e.txt")" "$(cat "$out/extra/e.txt")"
 
 # --- 5: i adds file to SGZ, l confirms it is listed ---

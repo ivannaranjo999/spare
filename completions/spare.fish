@@ -40,7 +40,7 @@ complete -c spare -f -s j -d 'Number of threads (default: all cores)'
 complete -c spare    -s C -d 'Extract files into directory' -r -F
 
 # Archive file completion (after action is known)
-complete -c spare -n '__spare_has_action' -a '(ls 2>/dev/null | string match -r ".*\.(sar|szt)"; echo -)' -d 'Archive'
+complete -c spare -n '__spare_has_action' -a '(ls 2>/dev/null | string match -r ".*\.(spa|szt)"; echo -)' -d 'Archive'
 
 # File completion for actions that take file arguments
 complete -c spare -n '__spare_has_action; and string match -qr "^(p|pz|g|i)\$" (__spare_action)' -F

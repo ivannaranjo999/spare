@@ -1,6 +1,6 @@
 #include "spare.h"
 
-#define SPARE_PRINT_VERSION "v3.0" /* release version */
+#define SPARE_PRINT_VERSION "v4.0" /* release version */
 
 /* ----------------------------------------------------------------------------
  * Function helpers
@@ -329,12 +329,12 @@ void usage(const char *name){
   print_version(name);
   fprintf(stderr, "Usage:\n");
   fprintf(stderr, "Actions:\n");
-  fprintf(stderr, "  %s p   <archive.sar> <file1..fileN>       Pack given files or folders to a SAR archive.\n", name);
-  fprintf(stderr, "  %s pz  <archive.szt> <file1..fileN>       Pack given files or folders to a SAR archive and compress it.\n", name);
-  fprintf(stderr, "  %s u   <archive.sar|.szt>                 Unpack SAR archive.\n", name);
-  fprintf(stderr, "  %s l   <archive.sar|.szt>                 List files contained in a SAR archive.\n", name);
-  fprintf(stderr, "  %s g   <archive.sar|.szt> <file1..fileN>  Grab specific files contained in a SAR archive.\n", name);
-  fprintf(stderr, "  %s i   <archive.sar|.szt> <file1..fileN>  Insert specific files to a SAR archive.\n", name);
+  fprintf(stderr, "  %s p   <archive.spa> <file1..fileN>       Pack given files or folders to a SPA archive.\n", name);
+  fprintf(stderr, "  %s pz  <archive.szt> <file1..fileN>       Pack given files or folders to a SPA archive and compress it.\n", name);
+  fprintf(stderr, "  %s u   <archive.spa|.szt>                 Unpack SPA archive.\n", name);
+  fprintf(stderr, "  %s l   <archive.spa|.szt>                 List files contained in a SPA archive.\n", name);
+  fprintf(stderr, "  %s g   <archive.spa|.szt> <file1..fileN>  Grab specific files contained in a SPA archive.\n", name);
+  fprintf(stderr, "  %s i   <archive.spa|.szt> <file1..fileN>  Insert specific files to a SPA archive.\n", name);
   fprintf(stderr, "Flags:\n");
   fprintf(stderr, "  -h         prints this information.\n");
   fprintf(stderr, "  -v         verbose output.\n");

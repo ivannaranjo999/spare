@@ -20,22 +20,22 @@ mkdir -p "$WORK/src/subdir"
 echo "hello world" > "$WORK/src/a.txt"
 echo "foo bar baz" > "$WORK/src/subdir/b.txt"
 echo "third file"  > "$WORK/src/c.txt"
-(cd "$WORK" && "$SPARE" p  archive.sar src)
+(cd "$WORK" && "$SPARE" p  archive.spa src)
 (cd "$WORK" && "$SPARE" pz archive.szt src)
 
 # --- 1: g grabs top-level file from SAR ---
 out="$WORK/t1" && mkdir "$out"
-(cd "$out" && "$SPARE" g "$WORK/archive.sar" src/a.txt)
+(cd "$out" && "$SPARE" g "$WORK/archive.spa" src/a.txt)
 check "g sar top-level" "$(cat "$WORK/src/a.txt")" "$(cat "$out/src/a.txt")"
 
 # --- 2: g grabs nested file from SAR ---
 out="$WORK/t2" && mkdir "$out"
-(cd "$out" && "$SPARE" g "$WORK/archive.sar" src/subdir/b.txt)
+(cd "$out" && "$SPARE" g "$WORK/archive.spa" src/subdir/b.txt)
 check "g sar nested" "$(cat "$WORK/src/subdir/b.txt")" "$(cat "$out/src/subdir/b.txt")"
 
 # --- 3: g grabs multiple files from SAR ---
 out="$WORK/t3" && mkdir "$out"
-(cd "$out" && "$SPARE" g "$WORK/archive.sar" src/a.txt src/c.txt)
+(cd "$out" && "$SPARE" g "$WORK/archive.spa" src/a.txt src/c.txt)
 check "g multi: a.txt" "$(cat "$WORK/src/a.txt")" "$(cat "$out/src/a.txt")"
 check "g multi: c.txt" "$(cat "$WORK/src/c.txt")" "$(cat "$out/src/c.txt")"
 
@@ -46,7 +46,7 @@ check "g szt" "$(cat "$WORK/src/a.txt")" "$(cat "$out/src/a.txt")"
 
 # --- 5: g does not extract non-requested files ---
 out="$WORK/t5" && mkdir "$out"
-(cd "$out" && "$SPARE" g "$WORK/archive.sar" src/a.txt)
+(cd "$out" && "$SPARE" g "$WORK/archive.spa" src/a.txt)
 if [ -f "$out/src/c.txt" ]; then
   fail "g extracted unrequested file c.txt"
 else
@@ -55,12 +55,12 @@ fi
 
 # --- 6: g on non-existent file does not crash (exits 0) ---
 out="$WORK/t6" && mkdir "$out"
-(cd "$out" && "$SPARE" g "$WORK/archive.sar" src/does_not_exist.txt) > /dev/null 2>&1
+(cd "$out" && "$SPARE" g "$WORK/archive.spa" src/does_not_exist.txt) > /dev/null 2>&1
 check "g missing file exit code" "$?" "0"
 
 # --- 7: g via stdin pipe (SAR) ---
 out="$WORK/t7" && mkdir "$out"
-(cd "$out" && "$SPARE" g - src/a.txt < "$WORK/archive.sar")
+(cd "$out" && "$SPARE" g - src/a.txt < "$WORK/archive.spa")
 check "g stdin sar" "$(cat "$WORK/src/a.txt")" "$(cat "$out/src/a.txt")"
 
 # --- 8: g via stdin pipe (SGZ with -z) ---
