@@ -1,7 +1,7 @@
-#include "sar.h"
+#include "spare.h"
 
-#define TMP_FILENAME       "sar.tmp"       /* Temp file for on-disk operations */
-#define TMP_STDIN_FILENAME "sar_stdin.tmp" /* Temp file to buffer stdin        */
+#define TMP_FILENAME       "spare.tmp"       /* Temp file for on-disk operations */
+#define TMP_STDIN_FILENAME "spare_stdin.tmp" /* Temp file to buffer stdin        */
 
 int g_nthreads = 1;
 

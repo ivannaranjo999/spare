@@ -1,7 +1,7 @@
 #!/bin/bash
 # Tests for i (insert) action
 
-SAR="$(cd "$(dirname "$0")/.." && pwd)/sar"
+SPARE="$(cd "$(dirname "$0")/.." && pwd)/spare"
 WORK="$(mktemp -d)"
 PASS=0
 FAIL=0
@@ -13,7 +13,7 @@ check() {
   if [ "$2" = "$3" ]; then ok "$1"; else fail "$1 (got '$2', want '$3')"; fi
 }
 
-[ -x "$SAR" ] || die "sar binary not found at $SAR"
+[ -x "$SPARE" ] || die "spare binary not found at $SPARE"
 
 # Setup
 mkdir -p "$WORK/src/subdir"
@@ -24,16 +24,16 @@ mkdir -p "$WORK/extra"
 echo "extra file"  > "$WORK/extra/e.txt"
 
 # --- 1: i adds file to SAR, l confirms it is listed ---
-(cd "$WORK" && "$SAR" p archive.sar src)
-(cd "$WORK" && "$SAR" i archive.sar new.txt)
-listing=$(cd "$WORK" && "$SAR" l archive.sar)
+(cd "$WORK" && "$SPARE" p archive.sar src)
+(cd "$WORK" && "$SPARE" i archive.sar new.txt)
+listing=$(cd "$WORK" && "$SPARE" l archive.sar)
 check "i sar: new file listed" "$(echo "$listing" | grep -c 'new.txt')" "1"
 
 # --- 2: i adds file to SAR, u can extract it ---
 out="$WORK/t2" && mkdir "$out"
-(cd "$WORK" && "$SAR" p t2.sar src)
-(cd "$WORK" && "$SAR" i t2.sar new.txt)
-(cd "$out"  && "$SAR" u "$WORK/t2.sar")
+(cd "$WORK" && "$SPARE" p t2.sar src)
+(cd "$WORK" && "$SPARE" i t2.sar new.txt)
+(cd "$out"  && "$SPARE" u "$WORK/t2.sar")
 check "i sar: inserted content" "$(cat "$WORK/new.txt")" "$(cat "$out/new.txt")"
 
 # --- 3: original files still intact after insert ---
@@ -41,26 +41,26 @@ check "i sar: original a.txt intact" "$(cat "$WORK/src/a.txt")" "$(cat "$out/src
 
 # --- 4: i adds directory to SAR ---
 out="$WORK/t4" && mkdir "$out"
-(cd "$WORK" && "$SAR" p t4.sar src)
-(cd "$WORK" && "$SAR" i t4.sar extra)
-(cd "$out"  && "$SAR" u "$WORK/t4.sar")
+(cd "$WORK" && "$SPARE" p t4.sar src)
+(cd "$WORK" && "$SPARE" i t4.sar extra)
+(cd "$out"  && "$SPARE" u "$WORK/t4.sar")
 check "i dir: extra/e.txt" "$(cat "$WORK/extra/e.txt")" "$(cat "$out/extra/e.txt")"
 
 # --- 5: i adds file to SGZ, l confirms it is listed ---
-(cd "$WORK" && "$SAR" pz archive.szt src)
-(cd "$WORK" && "$SAR" i archive.szt new.txt)
-listing=$(cd "$WORK" && "$SAR" l archive.szt)
+(cd "$WORK" && "$SPARE" pz archive.szt src)
+(cd "$WORK" && "$SPARE" i archive.szt new.txt)
+listing=$(cd "$WORK" && "$SPARE" l archive.szt)
 check "i szt: new file listed" "$(echo "$listing" | grep -c 'new.txt')" "1"
 
 # --- 6: i on SGZ, u can extract inserted file ---
 out="$WORK/t6" && mkdir "$out"
-(cd "$WORK" && "$SAR" pz t6.szt src)
-(cd "$WORK" && "$SAR" i t6.szt new.txt)
-(cd "$out"  && "$SAR" u "$WORK/t6.szt")
+(cd "$WORK" && "$SPARE" pz t6.szt src)
+(cd "$WORK" && "$SPARE" i t6.szt new.txt)
+(cd "$out"  && "$SPARE" u "$WORK/t6.szt")
 check "i szt: inserted content" "$(cat "$WORK/new.txt")" "$(cat "$out/new.txt")"
 
 # --- 7: i rejects pipe mode ---
-err=$(cd "$WORK" && "$SAR" i - new.txt 2>&1)
+err=$(cd "$WORK" && "$SPARE" i - new.txt 2>&1)
 exit_code=$?
 check "i pipe: exit code non-zero" "$exit_code" "1"
 if echo "$err" | grep -q "does not support"; then

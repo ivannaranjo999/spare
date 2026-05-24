@@ -1,4 +1,4 @@
-#include "sar.h"
+#include "spare.h"
 
 /* fallocate constants and declaration for sparse hole punching.
  * fallocate is a Linux syscall wrapper; -std=gnu11 exposes it via <fcntl.h>
@@ -129,11 +129,11 @@ static int dircache_insert(DirCache *c, const char *path){
  * Returns 0 on success, -1 on error.
  * ------------------------------------------------------------------------- */
 static int mkdir_parents(const char *filepath, DirCache *cache, int verbose){
-  char  tmp[SAR_MAX_PATH];
+  char  tmp[SPARE_MAX_PATH];
   char *p;
 
-  strncpy(tmp, filepath, SAR_MAX_PATH - 1);
-  tmp[SAR_MAX_PATH - 1] = '\0';
+  strncpy(tmp, filepath, SPARE_MAX_PATH - 1);
+  tmp[SPARE_MAX_PATH - 1] = '\0';
 
   /* Walk every '/' in the path and mkdir up to that point */
   for (p = tmp + 1; *p; p++){
@@ -180,7 +180,7 @@ int unpack_file(FILE *archive, DirCache *cache , int verbose){
   uint64_t i;
   size_t bytes_read, to_write, n, chunk;
   struct utimbuf times;
-  char linkbuf[SAR_MAX_PATH];
+  char linkbuf[SPARE_MAX_PATH];
   XXH64_state_t state;
   HoleEntry *holes;
 
@@ -197,19 +197,19 @@ int unpack_file(FILE *archive, DirCache *cache , int verbose){
   }
 
   /* Validate magic bytes */
-  if(memcmp(header.magic, SAR_MAGIC, 3) != 0){
+  if(memcmp(header.magic, SPARE_MAGIC, 3) != 0){
     fprintf(stderr, "error: bad magic - make sure this is a sar archive\n");
     return -1;
   }
 
   /* Validate version */
-  if(header.version != SAR_VERSION){
+  if(header.version != SPARE_VERSION){
     fprintf(stderr, "error: unsupported archive version %d\n", header.version);
     return -1;
   }
 
   /* Ensure filename is null terminated */
-  header.filename[SAR_MAX_PATH - 1] = '\0';
+  header.filename[SPARE_MAX_PATH - 1] = '\0';
 
   /* Save and zero checksum so it is excluded from hash recomputation */
   stored_checksum = header.checksum;
@@ -244,8 +244,8 @@ int unpack_file(FILE *archive, DirCache *cache , int verbose){
 
   /* Restore symlink */
   if (S_ISLNK(header.mode)) {
-    len = header.stored_size < SAR_MAX_PATH - 1 ?
-      header.stored_size : SAR_MAX_PATH - 1;
+    len = header.stored_size < SPARE_MAX_PATH - 1 ?
+      header.stored_size : SPARE_MAX_PATH - 1;
 
     /* read target path string from archive */
     if (fread(linkbuf, 1, len, archive) != len) {
@@ -292,7 +292,7 @@ int unpack_file(FILE *archive, DirCache *cache , int verbose){
     free(holes);
     return -1;
   }
-  setvbuf(dst, NULL, _IOFBF, SAR_FILE_BUF_SIZE);
+  setvbuf(dst, NULL, _IOFBF, SPARE_FILE_BUF_SIZE);
 
   fd_dst = fileno(dst);
 

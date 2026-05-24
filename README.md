@@ -1,5 +1,5 @@
-# SAR - Sparse Archive Relay 🍁
-Sparse Archive Relay, SAR, is a C tool that is able to **archive** a list of files and directories in a single file and **compress** it if desired. SAR also allows actions like:
+# SPARE - SParse Archive RElay 🍁
+SParse Archive RElay, SPARE, is a C tool that is able to **archive** a list of files and directories in a single file and **compress** it if desired. SPARE also allows actions like:
 
 - 🌲 Listing the contents of a `.sar|.sgz` file.
 - 🌳 Grabbing specific files or directories from a `.sar|.sgz` file.
@@ -11,12 +11,12 @@ The tool is used as follows:
 ```
 Usage:
 Actions:
-  sar p   <archive.sar> <file1..fileN>       Pack given files or folders to a SAR archive.
-  sar pz  <archive.szt> <file1..fileN>       Pack given files or folders to a SAR archive and compress it.
-  sar u   <archive.sar|.szt>                 Unpack SAR archive.
-  sar l   <archive.sar|.szt>                 List files contained in a SAR archive.
-  sar g   <archive.sar|.szt> <file1..fileN>  Grab specific files contained in a SAR archive.
-  sar i   <archive.sar|.szt> <file1..fileN>  Insert specific files to a SAR archive.
+  spare p   <archive.sar> <file1..fileN>       Pack given files or folders to a SPARE archive.
+  spare pz  <archive.szt> <file1..fileN>       Pack given files or folders to a SPARE archive and compress it.
+  spare u   <archive.sar|.szt>                 Unpack SPARE archive.
+  spare l   <archive.sar|.szt>                 List files contained in a SPARE archive.
+  spare g   <archive.sar|.szt> <file1..fileN>  Grab specific files contained in a SPARE archive.
+  spare i   <archive.sar|.szt> <file1..fileN>  Insert specific files to a SPARE archive.
 Flags:
   -v         verbose output.
   -j [N]     use N threads for packing and compression (default: all cores).
@@ -34,7 +34,7 @@ Each command is ran **thrice** and the **median** is taken.
 
 ### Results
 **Real (wall-clock) time** for [Linux kernel 7.0](https://cdn.kernel.org/pub/linux/kernel/v7.x/linux-7.0.tar.xz)
-| Operation         | tar      | sar      | sar -j4 |
+| Operation         | tar      | spare      | spare -j4 |
 |-------------------|----------|----------|-----|
 | Pack              | 19.658s  | 21.499s  | 13.889s  |
 | Pack and compress | 47.003s  | 30.079s  | 17.650s  |
@@ -42,7 +42,7 @@ Each command is ran **thrice** and the **median** is taken.
 | Unpack compressed |  5.332s  |  4.522s  | -        |
 
 **User time** for [Linux kernel 7.0](https://cdn.kernel.org/pub/linux/kernel/v7.x/linux-7.0.tar.xz)
-| Operation         | tar      | sar      | sar -j4 |
+| Operation         | tar      | spare      | spare -j4 |
 |-------------------|----------|----------|-----|
 | Pack              |  1.070s  |  1.564s  |  1.764s  |
 | Pack and compress | 46.568s  |  9.110s  | 24.185s  |
@@ -50,7 +50,7 @@ Each command is ran **thrice** and the **median** is taken.
 | Unpack compressed |  5.401s  |  3.056s  | -        |
 
 **Sys time** for [Linux kernel 7.0](https://cdn.kernel.org/pub/linux/kernel/v7.x/linux-7.0.tar.xz)
-| Operation         | tar      | sar      | sar -j4 |
+| Operation         | tar      | spare      | spare -j4 |
 |-------------------|----------|----------|-----|
 | Pack              |  5.563s  |  6.054s  |  7.873s  |
 | Pack and compress |  4.629s  |  7.626s  |  7.805s  |
@@ -58,41 +58,41 @@ Each command is ran **thrice** and the **median** is taken.
 | Unpack compressed |  2.708s  |  2.927s  | -        |
 
 **Compression ratios** for [Linux kernel 7.0](https://cdn.kernel.org/pub/linux/kernel/v7.x/linux-7.0.tar.xz)
-|  | tar czf | sar pz | sar -j4 pz |
+|  | tar czf | spare pz | spare -j4 pz |
 |---|---|---|---|
 | Absolute values | 265615532/1568397485 | 241568771/1568397485 | 241278130/1568397485 |
 | Ratio           | 16.94% | 15.40% | 15.38% |
 
 ## Stdin / Stdout piping
 
-Use `-` as the archive path to read from stdin or write to stdout, enabling SAR to participate in shell pipelines without creating an archive file as the final destination.
+Use `-` as the archive path to read from stdin or write to stdout, enabling SPARE to participate in shell pipelines without creating an archive file as the final destination.
 
 ```sh
-sar p  - file1 file2 | ssh user@host "sar u -"        # copy files over SSH
-sar p  - file1 file2 | sha256sum                       # checksum without a file
-sar pz - file1 file2 | aws s3 cp - s3://bucket/b.szt   # stream to object storage
-gpg -d secrets.szt   | sar u - -z                      # decrypt and unpack
+spare p  - file1 file2 | ssh user@host "spare u -"        # copy files over SSH
+spare p  - file1 file2 | sha256sum                       # checksum without a file
+spare pz - file1 file2 | aws s3 cp - s3://bucket/b.szt   # stream to object storage
+gpg -d secrets.szt   | spare u - -z                      # decrypt and unpack
 ```
 
-Use `-z` when reading a compressed archive from stdin so SAR knows the format without being able to inspect the file header.
+Use `-z` when reading a compressed archive from stdin so SPARE knows the format without being able to inspect the file header.
 
 ### Disk usage per operation
 
 | Command | Writes to disk |
 |---|---|
-| `sar p  -` *(single-threaded)* | zero |
-| `sar u  -` *(uncompressed)*    | zero |
-| `sar l  -` *(uncompressed)*    | zero |
-| `sar g  -` *(uncompressed)*    | zero |
-| `sar p  - -j N`                | `sar.tmp`: `pack_threads` requires mmap, which needs a seekable file |
-| `sar pz -`                     | `sar.tmp`: compression runs on the whole archive after packing, so the packed archive must exist first |
-| `sar u  - -z`                  | `sar.tmp`: the decompressor requires a seekable file path, not a pipe, stdin is buffered first |
-| `sar l  - -z` / `sar g - -z`  | `sar.tmp` + `sar_stdin.tmp`: decompressed archive written to disk (list/grab use fseek), plus stdin buffered |
+| `spare p  -` *(single-threaded)* | zero |
+| `spare u  -` *(uncompressed)*    | zero |
+| `spare l  -` *(uncompressed)*    | zero |
+| `spare g  -` *(uncompressed)*    | zero |
+| `spare p  - -j N`                | `spare.tmp`: `pack_threads` requires mmap, which needs a seekable file |
+| `spare pz -`                     | `spare.tmp`: compression runs on the whole archive after packing, so the packed archive must exist first |
+| `spare u  - -z`                  | `spare.tmp`: the decompressor requires a seekable file path, not a pipe, stdin is buffered first |
+| `spare l  - -z` / `spare g - -z`  | `spare.tmp` + `spare_stdin.tmp`: decompressed archive written to disk (list/grab use fseek), plus stdin buffered |
 
-The zero-disk guarantee only holds end-to-end when both sides of the pipe use uncompressed single-threaded operations. For example, `sar pz - | ssh host "sar u - -z"` writes a temp file on **both** machines.
+The zero-disk guarantee only holds end-to-end when both sides of the pipe use uncompressed single-threaded operations. For example, `spare pz - | ssh host "spare u - -z"` writes a temp file on **both** machines.
 
 ## The format
-SAR archives are just a flat binary file which is built as a concatenation of blocks, one per file. Each block contains a header and the file contents. The header is a fixed-size C struct storing everything needed to reconstruct the file.
+SPARE archives are just a flat binary file which is built as a concatenation of blocks, one per file. Each block contains a header and the file contents. The header is a fixed-size C struct storing everything needed to reconstruct the file.
 
 ```
 [ FileHeader | HoleEntry[hole_count] | stored_size bytes ]  ...
@@ -129,16 +129,16 @@ Every block carries an xxh64 checksum over: the FileHeader (checksum field zeroe
 
 ### Sparse file support
 
-With the `-S` flag, SAR uses `SEEK_HOLE`/`SEEK_DATA` to skip zero regions during packing. Only the actual data is stored, holes are recorded in the HoleEntry array and recreated with `fallocate(PUNCH_HOLE)` on unpack. This is a Linux-specific optimisation; on filesystems that don't support it, SAR falls back to storing the full file.
+With the `-S` flag, SPARE uses `SEEK_HOLE`/`SEEK_DATA` to skip zero regions during packing. Only the actual data is stored, holes are recorded in the HoleEntry array and recreated with `fallocate(PUNCH_HOLE)` on unpack. This is a Linux-specific optimisation; on filesystems that don't support it, SPARE falls back to storing the full file.
 
 Sparse detection is folded into the existing pre-scan phase of multithreaded packing (`-j N`): each file is opened, lseeked for holes, then closed, no extra data read. The data is then read only once by the worker threads, skipping hole regions.
 
 ## Compression
-When invoked with `pz`/`u`, SAR compresses and decompresses the entire archive using **zstd**. The output is a standard `.szt` file (a valid zstd stream readable by `zstd -d`).
+When invoked with `pz`/`u`, SPARE compresses and decompresses the entire archive using **zstd**. The output is a standard `.szt` file (a valid zstd stream readable by `zstd -d`).
 
 Compression is applied to the **whole archive** after packing, not per file. Multi-threading (`-j N`) is passed directly to zstd's built-in worker pool, replacing the manual pigz-style approach used with gzip.
 
-Only `p` action has its `pz` alternative since SAR is able to detect in the rest of actions if the provided archive is compressed or not.
+Only `p` action has its `pz` alternative since SPARE is able to detect in the rest of actions if the provided archive is compressed or not.
 
 ## Building & Installing
 List of dependencies:
@@ -150,22 +150,31 @@ To build binary, run:
 make
 ```
 
-To install binary, run:
+**System install** (requires sudo, installs shell completions automatically):
 ```
 sudo make install
 ```
 
-To install binary in a custom path, run:
+**User install** (no sudo required, override PREFIX and completion dirs):
 ```
-make install PREFIX=<your/path>
+make install PREFIX=$HOME/.local/bin \
+  BASH_COMPDIR=$HOME/.local/share/bash-completion/completions \
+  ZSH_COMPDIR=$HOME/.local/share/zsh/site-functions \
+  FISH_COMPDIR=$HOME/.config/fish/completions
 ```
 
-To uninstall binary, run:
+> **Zsh note:** the user completion dir is not loaded automatically. Add this line to your `~/.zshrc` once:
+> ```zsh
+> fpath=(~/.local/share/zsh/site-functions $fpath)
+> ```
+
+To uninstall, run the same command replacing `install` with `uninstall`:
 ```
 sudo make uninstall
 ```
-
-To uninstall binary from a custom path, run:
 ```
-make uninstall PREFIX=<your/path>
+make uninstall PREFIX=$HOME/.local/bin \
+  BASH_COMPDIR=$HOME/.local/share/bash-completion/completions \
+  ZSH_COMPDIR=$HOME/.local/share/zsh/site-functions \
+  FISH_COMPDIR=$HOME/.config/fish/completions
 ```

@@ -1,5 +1,5 @@
-#ifndef SAR_H
-#define SAR_H
+#ifndef SPARE_H
+#define SPARE_H
 
 #include <stdint.h>
 #include <ctype.h>
@@ -22,9 +22,9 @@
 
 #include "config.h"
 
-#define SAR_MAGIC "SAR" /* Magic string at start of every header */
-#define SAR_VERSION 3 /* format version */
-#define SAR_MAX_PATH 4096 /* max length of stored path */
+#define SPARE_MAGIC "SAR" /* Magic string at start of every header */
+#define SPARE_VERSION 3 /* format version */
+#define SPARE_MAX_PATH 4096 /* max length of stored path */
 
 extern int g_nthreads; /* Worker thread count, set by -j flag */
 
@@ -36,17 +36,17 @@ typedef struct {
 
 /* File header struct for SAR archives, 4152 bytes */
 typedef struct {
-  char     magic[3];               /* @ 0 */
-  uint8_t  version;                /* @ 3 */
-  char     filename[SAR_MAX_PATH]; /* @ 4 */
-  uint32_t mode;                   /* @ 4100 */
-  uint32_t uid;                    /* @ 4104*/
-  uint32_t gid;                    /* @ 4108 */
-  uint64_t file_size;              /* @ 4112, logical file size */
-  int64_t  mtime;                  /* @ 4120 */
-  uint64_t checksum;               /* @ 4128 */
-  uint64_t stored_size;            /* @ 4136, bytes stored in archive */
-  uint64_t hole_count;             /* @ 4144 num of HoleEntry after header */
+  char     magic[3];                 /* @ 0 */
+  uint8_t  version;                  /* @ 3 */
+  char     filename[SPARE_MAX_PATH]; /* @ 4 */
+  uint32_t mode;                     /* @ 4100 */
+  uint32_t uid;                      /* @ 4104*/
+  uint32_t gid;                      /* @ 4108 */
+  uint64_t file_size;                /* @ 4112, logical file size */
+  int64_t  mtime;                    /* @ 4120 */
+  uint64_t checksum;                 /* @ 4128 */
+  uint64_t stored_size;              /* @ 4136, bytes stored in archive */
+  uint64_t hole_count;               /* @ 4144 num of HoleEntry after header */
 } FileHeader;
 
 /* Struct for decompression without using disk */

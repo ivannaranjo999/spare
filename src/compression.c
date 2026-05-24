@@ -1,4 +1,4 @@
-#include "sar.h"
+#include "spare.h"
 
 /* ----------------------------------------------------------------------------
  * compress_arch
@@ -35,7 +35,7 @@ int compress_arch(const char *dst_path, const char *src_path, int verbose){
 
   src = fopen(src_path, "rb");
   if (src == NULL) { perror(src_path); return -1; }
-  setvbuf(src, NULL, _IOFBF, SAR_ARCHIVE_BUF_SIZE);
+  setvbuf(src, NULL, _IOFBF, SPARE_ARCHIVE_BUF_SIZE);
 
   if (dst_is_stdout) {
     dst = stdout;
@@ -46,7 +46,7 @@ int compress_arch(const char *dst_path, const char *src_path, int verbose){
       fclose(src);
       return -1;
     }
-    setvbuf(dst, NULL, _IOFBF, SAR_ARCHIVE_BUF_SIZE);
+    setvbuf(dst, NULL, _IOFBF, SPARE_ARCHIVE_BUF_SIZE);
   }
 
   /* Initialize zstd compression context */

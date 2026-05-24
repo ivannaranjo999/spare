@@ -2,7 +2,7 @@
 # Tests for sparse file detection (-S flag): SEEK_HOLE/SEEK_DATA, hole map,
 # fallocate hole punching on unpack, and checksum coverage of the hole map.
 
-SAR="$(cd "$(dirname "$0")/.." && pwd)/sar"
+SPARE="$(cd "$(dirname "$0")/.." && pwd)/spare"
 WORK="$(mktemp -d)"
 PASS=0
 FAIL=0
@@ -36,15 +36,15 @@ f.close()
 "
 }
 
-[ -x "$SAR" ] || die "sar binary not found at $SAR"
+[ -x "$SPARE" ] || die "spare binary not found at $SPARE"
 
 mkdir -p "$WORK/src"
 make_sparse_file "$WORK/src/sparse.bin"
 
 # --- 1: pack -S + unpack: data content must be preserved ---
-(cd "$WORK" && "$SAR" p -S archive_s.sar src/sparse.bin 2>/dev/null)
+(cd "$WORK" && "$SPARE" p -S archive_s.sar src/sparse.bin 2>/dev/null)
 out="$WORK/t1" && mkdir "$out"
-(cd "$out" && "$SAR" u "$WORK/archive_s.sar" 2>/dev/null)
+(cd "$out" && "$SPARE" u "$WORK/archive_s.sar" 2>/dev/null)
 result=$(python3 -c "
 import sys
 try:
@@ -63,7 +63,7 @@ else
 fi
 
 # --- 2: archive with -S must be smaller than without -S for a sparse file ---
-(cd "$WORK" && "$SAR" p archive_dense.sar src/sparse.bin 2>/dev/null)
+(cd "$WORK" && "$SPARE" p archive_dense.sar src/sparse.bin 2>/dev/null)
 size_sparse=$(stat -c%s "$WORK/archive_s.sar" 2>/dev/null || stat -f%z "$WORK/archive_s.sar")
 size_dense=$(stat -c%s "$WORK/archive_dense.sar" 2>/dev/null || stat -f%z "$WORK/archive_dense.sar")
 if [ "$size_sparse" -lt "$size_dense" ]; then
@@ -75,7 +75,7 @@ fi
 
 # --- 3: pack -S without -S: dense archive still unpacks correctly ---
 out="$WORK/t3" && mkdir "$out"
-(cd "$out" && "$SAR" u "$WORK/archive_dense.sar" 2>/dev/null)
+(cd "$out" && "$SPARE" u "$WORK/archive_dense.sar" 2>/dev/null)
 result=$(python3 -c "
 try:
     data = open('$out/src/sparse.bin', 'rb').read()
@@ -107,7 +107,7 @@ hole_map_size=$((hole_count * 16))
 data_offset=$((4152 + hole_map_size))
 corrupt_byte "$WORK/corrupt_data_s.sar" "$data_offset"
 out="$WORK/t4" && mkdir "$out"
-if (cd "$out" && "$SAR" u "$WORK/corrupt_data_s.sar" 2>/dev/null); then
+if (cd "$out" && "$SPARE" u "$WORK/corrupt_data_s.sar" 2>/dev/null); then
   fail "corrupt data in sparse archive not detected"
 else
   ok "corrupt data in sparse archive detected"
@@ -118,16 +118,16 @@ fi
 cp "$WORK/archive_s.sar" "$WORK/corrupt_holes.sar"
 corrupt_byte "$WORK/corrupt_holes.sar" 4152
 out="$WORK/t5" && mkdir "$out"
-if (cd "$out" && "$SAR" u "$WORK/corrupt_holes.sar" 2>/dev/null); then
+if (cd "$out" && "$SPARE" u "$WORK/corrupt_holes.sar" 2>/dev/null); then
   fail "corrupt hole map not detected"
 else
   ok "corrupt hole map detected"
 fi
 
 # --- 6: multithreaded pack -S + unpack: content preserved ---
-(cd "$WORK" && "$SAR" p -S -j 2 mt_s.sar src/sparse.bin 2>/dev/null)
+(cd "$WORK" && "$SPARE" p -S -j 2 mt_s.sar src/sparse.bin 2>/dev/null)
 out="$WORK/t6" && mkdir "$out"
-(cd "$out" && "$SAR" u "$WORK/mt_s.sar" 2>/dev/null)
+(cd "$out" && "$SPARE" u "$WORK/mt_s.sar" 2>/dev/null)
 result=$(python3 -c "
 try:
     data = open('$out/src/sparse.bin', 'rb').read()

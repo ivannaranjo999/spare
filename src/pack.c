@@ -1,4 +1,4 @@
-#include "sar.h"
+#include "spare.h"
 
 /* SEEK_DATA / SEEK_HOLE are Linux extensions exposed via _GNU_SOURCE.
  * -std=gnu11 implies _GNU_SOURCE but some linters miss it; define fallbacks. */
@@ -14,8 +14,8 @@
 /* ------------------------------------------------------------------ */
 
 typedef struct {
-  char filepath[SAR_MAX_PATH];
-  char linkpath[SAR_MAX_PATH];
+  char filepath[SPARE_MAX_PATH];
+  char linkpath[SPARE_MAX_PATH];
   uint8_t *dest; /* pointer into mmap region for this file */
   uint64_t file_size;
   uint64_t stored_size; /* actual bytes stored (< file_size when sparse) */
@@ -210,11 +210,11 @@ static void fill_workitem(WorkItem *w, const char *filepath, const char *linkpat
   uint64_t file_size, uint32_t mode, uint32_t uid, uint32_t gid, int64_t mtime){
   /* Code */
   memset(w, 0, sizeof(*w));
-  strncpy(w->filepath, filepath, SAR_MAX_PATH - 1);
-  w->filepath[SAR_MAX_PATH - 1] = '\0';
+  strncpy(w->filepath, filepath, SPARE_MAX_PATH - 1);
+  w->filepath[SPARE_MAX_PATH - 1] = '\0';
   if (linkpath != NULL) {
-    strncpy(w->linkpath, linkpath, SAR_MAX_PATH - 1);
-    w->linkpath[SAR_MAX_PATH - 1] = '\0';
+    strncpy(w->linkpath, linkpath, SPARE_MAX_PATH - 1);
+    w->linkpath[SPARE_MAX_PATH - 1] = '\0';
   }
   w->file_size = file_size;
   w->stored_size = file_size;
@@ -240,8 +240,8 @@ static int collect_files(const char *filepath, WorkItem **items, int *count,
   struct stat st;
   DIR *dir;
   struct dirent *entry;
-  char fullpath[SAR_MAX_PATH];
-  char linkbuf[SAR_MAX_PATH];
+  char fullpath[SPARE_MAX_PATH];
+  char linkbuf[SPARE_MAX_PATH];
   ssize_t linklen;
   int result = 0;
   int fd;
@@ -380,8 +380,8 @@ static void fill_header(FileHeader *h, const char *filepath,
     uint32_t mode, uint32_t uid, uint32_t gid, int64_t mtime){
   /* Code */
   memset(h, 0, sizeof(*h));
-  memcpy(h->magic, SAR_MAGIC, 3);
-  h->version = SAR_VERSION;
+  memcpy(h->magic, SPARE_MAGIC, 3);
+  h->version = SPARE_VERSION;
   h->file_size = file_size;
   h->stored_size = stored_size;
   h->hole_count = hole_count;
@@ -389,8 +389,8 @@ static void fill_header(FileHeader *h, const char *filepath,
   h->uid = uid;
   h->gid = gid;
   h->mtime = mtime;
-  strncpy(h->filename, filepath, SAR_MAX_PATH - 1);
-  h->filename[SAR_MAX_PATH - 1] = '\0';
+  strncpy(h->filename, filepath, SPARE_MAX_PATH - 1);
+  h->filename[SPARE_MAX_PATH - 1] = '\0';
 }
 
 /* ----------------------------------------------------------------------------
@@ -434,7 +434,7 @@ static int write_item(const WorkItem *w, int verbose){
     perror(w->filepath);
     return -1;
   }
-  setvbuf(src, NULL, _IOFBF, SAR_FILE_BUF_SIZE);
+  setvbuf(src, NULL, _IOFBF, SPARE_FILE_BUF_SIZE);
 
   if (foreach_data_region(src, w->filepath, w->holes, w->hole_count, w->file_size,
         buf, sizeof(buf), memcpy_chunk, &data_dest) != 0) {
@@ -639,8 +639,8 @@ int pack_file(FILE *archive, const char *filepath, int sparse, int verbose){
   struct dirent *entry;
   FileHeader header;
   char buf[COPY_BUFFER_SIZE_SMALL];
-  char fullpath[SAR_MAX_PATH];
-  char linkbuf[SAR_MAX_PATH];
+  char fullpath[SPARE_MAX_PATH];
+  char linkbuf[SPARE_MAX_PATH];
   ssize_t linklen;
   XXH64_state_t state;
   WriteCtx wctx;
@@ -733,7 +733,7 @@ int pack_file(FILE *archive, const char *filepath, int sparse, int verbose){
     perror(filepath);
     return -1;
   }
-  setvbuf(src, NULL, _IOFBF, SAR_FILE_BUF_SIZE);
+  setvbuf(src, NULL, _IOFBF, SPARE_FILE_BUF_SIZE);
 
   stored_size = (uint64_t)st.st_size;
 

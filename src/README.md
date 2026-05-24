@@ -1,7 +1,7 @@
 # File & function documentation
 
 ## Index
-- [sar.h](#sarh)
+- [spare.h](#spareh)
 - [config.h](#configh)
 - [main.c](#mainc)
 - [helpers.c](#helpersc)
@@ -15,14 +15,14 @@
 
 ---
 
-## sar.h
-This file is the main header of SAR. It is included in all C files and contains declarations that are used at least in two of them.
+## spare.h
+This file is the main header of SPARE. It is included in all C files and contains declarations that are used at least in two of them.
 
 ## config.h
 Contains defines that can be modified by the user before compiling if desired.
 
 ## main.c
-The entry point of SAR. It is in charge of parsing the input arguments, which can be actions, flags or paths, and calling the function that performs what the user desires.
+The entry point of SPARE. It is in charge of parsing the input arguments, which can be actions, flags or paths, and calling the function that performs what the user desires.
 
 ### Function call order by action
 
@@ -131,10 +131,10 @@ These functions are **action functions**, which are required to make the followi
 - just_run
 
 ### detect_archive_format
-Returns the format of the given file, it can be a .szt (compressed SAR) or .sar. If none of both, return unknown or not existing.
+Returns the format of the given file, it can be a .szt (compressed .sar) or .sar. If none of both, return unknown or not existing.
 
 ### check_archive_version
-Parses the version of the given file. This is required to ensure sar binary do not accept a sar file that has a different FileHeader struct.
+Parses the version of the given file. This is required to ensure spare binary do not accept a .sar file that has a different FileHeader struct.
 
 ### decompress_in_ram_and_run
 Generic function to decompress an archive to RAM and perform the desired action function.
@@ -162,7 +162,7 @@ Computes a xxh64 over FileHeader with checksum field zeroed, hole map and file d
 Prints help.
 
 ### print_version
-Prints SAR version.
+Prints SPARE version.
 
 ---
 
@@ -303,10 +303,10 @@ In charge of decompression functions. Refer to *decompress_in_ram_and_run* and *
 Zstd streaming decompress loop. Reads compressed data from a source FILE and writes decompressed bytes to a destination FILE. The FlushNeeded parameter controls whether to fflush after each output chunk, needed when writing to a pipe so the reading end does not block.
 
 ### decompress_ram_worker
-pthread worker function. Opens the compressed source file, decompresses it, and writes raw SAR bytes into the write end of a pipe. Closing the write end on exit signals EOF to the reader.
+pthread worker function. Opens the compressed source file, decompresses it, and writes raw SPARE bytes into the write end of a pipe. Closing the write end on exit signals EOF to the reader.
 
 ### decompress_arch_ram
-Creates a pipe, spawns *decompress_ram_worker* in a thread, and returns the read end of the pipe as a FILE*. The caller can then read decompressed SAR bytes from it while decompression runs concurrently.
+Creates a pipe, spawns *decompress_ram_worker* in a thread, and returns the read end of the pipe as a FILE*. The caller can then read decompressed SPARE bytes from it while decompression runs concurrently.
 
 ### decompress_arch_ram_join
 Waits for the decompression thread started by *decompress_arch_ram* to finish and returns its result.

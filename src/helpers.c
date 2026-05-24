@@ -1,6 +1,6 @@
-#include "sar.h"
+#include "spare.h"
 
-#define SAR_PRINT_VERSION "v3.0" /* release version */
+#define SPARE_PRINT_VERSION "v3.0" /* release version */
 
 /* ----------------------------------------------------------------------------
  * Function helpers
@@ -66,7 +66,7 @@ ArchiveFormat detect_archive_format(const char *archive_path, int verbose){
     return ARCHIVE_SZT;
   }
 
-  if (n >= 3 && memcmp(magic, SAR_MAGIC, 3) == 0){
+  if (n >= 3 && memcmp(magic, SPARE_MAGIC, 3) == 0){
     if (verbose) printf("'%s' detected as SAR archive\n", archive_path);
     return ARCHIVE_SAR;
   }
@@ -79,7 +79,7 @@ ArchiveFormat detect_archive_format(const char *archive_path, int verbose){
  * check_archive_version
  *
  * Opens path, reads the first FileHeader, and verifies that the magic and
- * version match the compiled-in SAR_VERSION.
+ * version match the compiled-in SPARE_VERSION.
  * Returns 0 on success, -1 on mismatch or read error.
  * ------------------------------------------------------------------------- */
 int check_archive_version(const char *path){
@@ -102,13 +102,13 @@ int check_archive_version(const char *path){
     fprintf(stderr, "error: could not read header from '%s'\n", path);
     return -1;
   }
-  if(memcmp(h.magic, SAR_MAGIC, 3) != 0){
+  if(memcmp(h.magic, SPARE_MAGIC, 3) != 0){
     fprintf(stderr, "error: bad magic in '%s' - not a SAR archive\n", path);
     return -1;
   }
-  if(h.version != SAR_VERSION){
+  if(h.version != SPARE_VERSION){
     fprintf(stderr, "error: archive '%s' uses format version %d, "
-            "this build requires version %d\n", path, h.version, SAR_VERSION);
+            "this build requires version %d\n", path, h.version, SPARE_VERSION);
     return -1;
   }
 
@@ -134,7 +134,7 @@ int decompress_in_ram_and_run(const char *src_path, ActionFn action_fn,
     return -1;
   }
 
-  setvbuf(fp, NULL, _IOFBF, SAR_ARCHIVE_BUF_SIZE);
+  setvbuf(fp, NULL, _IOFBF, SPARE_ARCHIVE_BUF_SIZE);
  
   ret = action_fn(fp, user_data);
  
@@ -172,7 +172,7 @@ int decompress_in_disk_and_run(const char *dst_path, const char *src_path,
     return -1;
   }
 
-  setvbuf(fp, NULL, _IOFBF, SAR_ARCHIVE_BUF_SIZE);
+  setvbuf(fp, NULL, _IOFBF, SPARE_ARCHIVE_BUF_SIZE);
  
   ret = action_fn(fp, user_data);
  
@@ -204,7 +204,7 @@ int just_run(const char *archive_path, const char *mode, ActionFn action_fn, voi
       perror(archive_path);
       return -1;
     }
-    setvbuf(fp, NULL, _IOFBF, SAR_ARCHIVE_BUF_SIZE);
+    setvbuf(fp, NULL, _IOFBF, SPARE_ARCHIVE_BUF_SIZE);
   }
 
   ret = action_fn(fp, user_data);
@@ -236,7 +236,7 @@ int stream_file_to_stdout(const char *path) {
     perror(path);
     return -1;
   }
-  setvbuf(src, NULL, _IOFBF, SAR_ARCHIVE_BUF_SIZE);
+  setvbuf(src, NULL, _IOFBF, SPARE_ARCHIVE_BUF_SIZE);
 
   while ((n = fread(buf, 1, sizeof(buf), src)) > 0) {
     if (fwrite(buf, 1, n, stdout) != n) {
@@ -277,7 +277,7 @@ int buffer_stdin_to_file(const char *dst_path) {
     perror(dst_path);
     return -1;
   }
-  setvbuf(dst, NULL, _IOFBF, SAR_ARCHIVE_BUF_SIZE);
+  setvbuf(dst, NULL, _IOFBF, SPARE_ARCHIVE_BUF_SIZE);
 
   while ((n = fread(buf, 1, sizeof(buf), stdin)) > 0) {
     if (fwrite(buf, 1, n, dst) != n) {
@@ -353,7 +353,7 @@ void usage(const char *name){
  * Prints SAR version
  * ------------------------------------------------------------------------- */
 void print_version (const char *name){
-  printf("%s %s\n", name, SAR_PRINT_VERSION);
+  printf("%s %s\n", name, SPARE_PRINT_VERSION);
   printf("\n");
   printf("Written by Ivan Naranjo Ortega.\n");
 }

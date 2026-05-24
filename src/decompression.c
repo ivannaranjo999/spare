@@ -1,4 +1,4 @@
-#include "sar.h"
+#include "spare.h"
 
 typedef enum { DONOTFLUSH, DOFLUSH } FlushNeeded;
 
@@ -108,7 +108,7 @@ static void *decompress_ram_worker(void *arg){
     args->result = -1;
     return NULL;
   }
-  setvbuf(src, NULL, _IOFBF, SAR_ARCHIVE_BUF_SIZE);
+  setvbuf(src, NULL, _IOFBF, SPARE_ARCHIVE_BUF_SIZE);
 
   dst = fdopen(args->write_fd, "wb");
   if (dst == NULL) {
@@ -220,7 +220,7 @@ int decompress_arch(const char *dst_path, const char *src_path, int verbose){
     fprintf(stderr, "error: could not open '%s'\n", dst_path);
     return -1;
   }
-  setvbuf(dst, NULL, _IOFBF, SAR_ARCHIVE_BUF_SIZE);
+  setvbuf(dst, NULL, _IOFBF, SPARE_ARCHIVE_BUF_SIZE);
 
   src = fopen(src_path, "rb");
   if(src == NULL){
@@ -228,7 +228,7 @@ int decompress_arch(const char *dst_path, const char *src_path, int verbose){
     fclose(dst);
     return -1;
   }
-  setvbuf(src, NULL, _IOFBF, SAR_ARCHIVE_BUF_SIZE);
+  setvbuf(src, NULL, _IOFBF, SPARE_ARCHIVE_BUF_SIZE);
 
   /* Decompress */
   ret = decompress_stream(dst, src, DONOTFLUSH);

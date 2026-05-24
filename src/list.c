@@ -1,4 +1,4 @@
-#include "sar.h"
+#include "spare.h"
 
 /* ----------------------------------------------------------------------------
  * get_filename
@@ -25,17 +25,17 @@ static int get_filename(FILE *archive){
     return -1;
   }
 
-  if(memcmp(header.magic, SAR_MAGIC, 3) != 0){
+  if(memcmp(header.magic, SPARE_MAGIC, 3) != 0){
     fprintf(stderr, "error: bad magic - not a SAR archive\n");
     return -1;
   }
-  if(header.version != SAR_VERSION){
+  if(header.version != SPARE_VERSION){
     fprintf(stderr, "error: unsupported archive version %d\n", header.version);
     return -1;
   }
 
   /* Ensure filename is null terminated */
-  header.filename[SAR_MAX_PATH - 1] = '\0';
+  header.filename[SPARE_MAX_PATH - 1] = '\0';
 
   /* Print filename */
   fprintf(stdout, "%s\n", header.filename);
