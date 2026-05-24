@@ -22,6 +22,7 @@ Flags:
   -j [N]     use N threads for packing and compression (default: all cores).
   -z         when archive path is '-', treat stdin as compressed (SZT).
   -S         detect and preserve sparse holes (VM images, database files).
+  -C <dir>   extract files into <dir> instead of current directory.
 ```
 ## Benchmarks
 ### Conditions

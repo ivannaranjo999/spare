@@ -341,6 +341,7 @@ void usage(const char *name){
   fprintf(stderr, "  -j [N]     use N threads for packing and compression (default: all cores).\n");
   fprintf(stderr, "  -z         when archive path is '-', treat stdin as compressed (SZT).\n");
   fprintf(stderr, "  -S         detect and preserve sparse holes (VM images, database files).\n");
+  fprintf(stderr, "  -C <dir>   extract files into <dir> instead of current directory.\n");
   fprintf(stderr, "\nPipeline:\n");
   fprintf(stderr, "  Use '-' as archive path to read/write stdin/stdout.\n");
   fprintf(stderr, "  %s p  - <file1..fileN>  | %s u  -       Pack and extract via pipe.\n", name, name);

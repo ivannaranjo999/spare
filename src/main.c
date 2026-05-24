@@ -14,8 +14,10 @@ int main(int argc, char *argv[]){
   /* Local variables */
   const char *action = NULL;
   const char *archive_path = NULL;
+  const char *extract_dir = NULL;
   const char **filepaths = NULL;
   char *endptr;
+  char abs_archive[SPARE_MAX_PATH];
   int i = 0;
   int verbose = 0;
   int nfiles = 0;
@@ -65,6 +67,16 @@ int main(int argc, char *argv[]){
     } else if(strcmp(argv[i], "-S") == 0){
       sparse = 1;
       argv[i] = NULL;
+    } else if(strcmp(argv[i], "-C") == 0){
+      argv[i] = NULL;
+      if (i + 1 < argc && argv[i+1] != NULL) {
+        extract_dir = argv[i+1];
+        argv[i+1] = NULL;
+        i++;
+      } else {
+        fprintf(stderr, "error: '-C' requires a directory argument\n");
+        return 1;
+      }
     }
   }
   if (verbose && g_nthreads > 1) printf("number of threads: %d\n", g_nthreads);
@@ -102,6 +114,22 @@ int main(int argc, char *argv[]){
     if ((archive_format == ARCHIVE_SAR) && 
         (check_archive_version(archive_path) != 0))
       return 1;
+  }
+
+  /* If -C is set, resolve archive path to absolute before chdir so relative
+   * paths like 'archive.sar' still work after the directory change */
+  if (extract_dir != NULL && !is_stream) {
+    if (realpath(archive_path, abs_archive) == NULL) {
+      perror(archive_path);
+      return 1;
+    }
+    archive_path = abs_archive;
+  }
+  if (extract_dir != NULL) {
+    if (chdir(extract_dir) != 0) {
+      perror(extract_dir);
+      return 1;
+    }
   }
 
   /* Action - p */

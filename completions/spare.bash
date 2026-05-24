@@ -5,9 +5,13 @@ _spare() {
   cur="${COMP_WORDS[COMP_CWORD]}"
   prev="${COMP_WORDS[COMP_CWORD-1]}"
 
-  # -j expects a number next, not a file or action
+  # -j expects a number next; -C expects a directory
   if [[ "$prev" == "-j" ]]; then
     COMPREPLY=()
+    return
+  fi
+  if [[ "$prev" == "-C" ]]; then
+    _filedir -d
     return
   fi
 
@@ -23,13 +27,13 @@ _spare() {
 
   # Still on a flag
   if [[ "$cur" == -* ]]; then
-    COMPREPLY=( $(compgen -W "-v -h -j -z -S -V" -- "$cur") )
+    COMPREPLY=( $(compgen -W "-v -h -j -z -S -V -C" -- "$cur") )
     return
   fi
 
   # No action yet: complete actions and flags
   if [[ -z "$action" ]]; then
-    COMPREPLY=( $(compgen -W "p pz u l g i -v -h -j -z -S -V" -- "$cur") )
+    COMPREPLY=( $(compgen -W "p pz u l g i -v -h -j -z -S -V -C" -- "$cur") )
     return
   fi
 

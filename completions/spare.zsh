@@ -10,7 +10,7 @@ _spare() {
   for w in "${words_copy[@]:1}"; do
     if (( skip )); then skip=0; continue; fi
     case "$w" in
-      -j) skip=1 ;;
+      -j|-C) skip=1 ;;
       -v|-h|-z|-S|-V) ;;
       p|pz|u|l|g|i) action="$w"; break ;;
     esac
@@ -23,6 +23,7 @@ _spare() {
     '-z[treat stdin as compressed when archive is -]' \
     '-S[detect and preserve sparse holes]' \
     '-j[use N threads (default: all cores)]:threads:( )' \
+    '-C[extract files into directory]:directory:_files -/' \
     '1:action:(p pz u l g i)' \
     '2:archive:->archive' \
     '*:files:->files'
