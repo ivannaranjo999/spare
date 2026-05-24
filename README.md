@@ -1,5 +1,5 @@
-# SAR - Simple ARchiver 🍁
-Simple ARchiver, SAR, is a C tool that is able to **archive** a list of files and directories in a single file and **compress** it if desired. SAR also allows actions like:
+# SAR - Sparse Archive Relay 🍁
+Sparse Archive Relay, SAR, is a C tool that is able to **archive** a list of files and directories in a single file and **compress** it if desired. SAR also allows actions like:
 
 - 🌲 Listing the contents of a `.sar|.sgz` file.
 - 🌳 Grabbing specific files or directories from a `.sar|.sgz` file.
