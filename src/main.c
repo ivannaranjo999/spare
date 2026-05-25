@@ -1,9 +1,17 @@
 #include "spare.h"
+#include <signal.h>
 
 #define TMP_FILENAME       "spare.tmp"       /* Temp file for on-disk operations */
 #define TMP_STDIN_FILENAME "spare_stdin.tmp" /* Temp file to buffer stdin        */
 
 int g_nthreads = 1;
+
+static void cleanup_handler(int sig) {
+  unlink(TMP_FILENAME);
+  unlink(TMP_STDIN_FILENAME);
+  signal(sig, SIG_DFL);
+  raise(sig);
+}
 
 /* ----------------------------------------------------------------------------
  * main
@@ -29,6 +37,9 @@ int main(int argc, char *argv[]){
   ArchiveFormat archive_format = ARCHIVE_DOESNOTEXIST;
 
   /* Code */
+  signal(SIGINT,  cleanup_handler);
+  signal(SIGTERM, cleanup_handler);
+
   /* Consume flags */
   for (i = 1; i < argc; ++i){
     if(strcmp(argv[i], "-v") == 0){
