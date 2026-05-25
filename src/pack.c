@@ -72,22 +72,6 @@ static int memcpy_chunk(const void *buf, size_t n, void *ctx) {
   return 0;
 }
 
-/* Hash and write each chunk in one pass; used for single-pass pack_file */
-typedef struct {
-  FILE *dst;
-  const char *path;
-  XXH64_state_t *state;
-} HashWriteCtx;
-
-static int hash_write_chunk(const void *buf, size_t n, void *ctx) {
-  HashWriteCtx *c = ctx;
-  XXH64_update(c->state, buf, n);
-  if (fwrite(buf, 1, n, c->dst) != n) {
-    fprintf(stderr, "error: failed to write data for '%s'\n", c->path);
-    return -1;
-  }
-  return 0;
-}
 
 /* ----------------------------------------------------------------------------
  * foreach_data_region_fd
@@ -645,17 +629,15 @@ int pack_file(FILE *archive, const char *filepath, int sparse, int verbose){
   DIR *dir;
   struct dirent *entry;
   FileHeader header;
-  char buf[COPY_BUFFER_SIZE_SMALL];
+  char buf[COPY_BUFFER_SIZE];
   char fullpath[SPARE_MAX_PATH];
   char linkbuf[SPARE_MAX_PATH];
   ssize_t linklen;
   XXH64_state_t state;
   WriteCtx wctx;
-  HashWriteCtx hwctx;
   HoleEntry *holes;
   uint64_t hole_count;
   uint64_t stored_size;
-  off_t header_pos, data_end;
   int result = 0;
 
   /* Code */
@@ -742,66 +724,34 @@ int pack_file(FILE *archive, const char *filepath, int sparse, int verbose){
     (uint32_t)st.st_mode, (uint32_t)st.st_uid,
     (uint32_t)st.st_gid, (int64_t)st.st_mtime);
 
-  {
-    int _fl = fcntl(fileno(archive), F_GETFL);
-    header_pos = (_fl != -1 && (_fl & O_APPEND)) ? (off_t)-1 : ftello(archive);
+  /* Hash pass: compute checksum. Source stays in page cache so the re-read
+   * for the write pass costs negligible extra I/O. */
+  XXH64_reset(&state, 0);
+  XXH64_update(&state, &header, sizeof(header));
+  if (holes && hole_count > 0)
+    XXH64_update(&state, holes, hole_count * sizeof(HoleEntry));
+  if (foreach_data_region_fd(src_fd, filepath, holes, hole_count,
+        (uint64_t)st.st_size, buf, sizeof(buf), hash_chunk, &state) != 0) {
+    close(src_fd); free(holes); return -1;
   }
-  if (header_pos != (off_t)-1) {
-    if (fwrite(&header, sizeof(header), 1, archive) != 1) {
-      fprintf(stderr, "error: failed to write header for '%s'\n", filepath);
-      close(src_fd); free(holes); return -1;
-    }
-    if (holes && hole_count > 0) {
-      if (fwrite(holes, sizeof(HoleEntry), hole_count, archive) != hole_count) {
-        fprintf(stderr, "error: failed to write hole map for '%s'\n", filepath);
-        close(src_fd); free(holes); return -1;
-      }
-    }
+  header.checksum = (uint64_t)XXH64_digest(&state);
 
-    XXH64_reset(&state, 0);
-    XXH64_update(&state, &header, sizeof(header));
-    if (holes && hole_count > 0)
-      XXH64_update(&state, holes, hole_count * sizeof(HoleEntry));
+  if (fwrite(&header, sizeof(header), 1, archive) != 1) {
+    fprintf(stderr, "error: failed to write header for '%s'\n", filepath);
+    close(src_fd); free(holes); return -1;
+  }
+  if (holes && hole_count > 0) {
+    if (fwrite(holes, sizeof(HoleEntry), hole_count, archive) != hole_count) {
+      fprintf(stderr, "error: failed to write hole map for '%s'\n", filepath);
+      close(src_fd); free(holes); return -1;
+    }
+  }
 
-    hwctx.dst = archive; hwctx.path = filepath; hwctx.state = &state;
-    if (foreach_data_region_fd(src_fd, filepath, holes, hole_count,
-          (uint64_t)st.st_size, buf, sizeof(buf), hash_write_chunk, &hwctx) != 0) {
-      close(src_fd); free(holes); return -1;
-    }
-    header.checksum = (uint64_t)XXH64_digest(&state);
-
-    data_end = ftello(archive);
-    if (fseeko(archive, header_pos, SEEK_SET) == 0) {
-      fwrite(&header, sizeof(header), 1, archive);
-      fseeko(archive, data_end, SEEK_SET);
-    }
-  } else {
-    /* Non-seekable (stdout): hash pass then write pass, both using fd reads */
-    XXH64_reset(&state, 0);
-    XXH64_update(&state, &header, sizeof(header));
-    if (holes && hole_count > 0)
-      XXH64_update(&state, holes, hole_count * sizeof(HoleEntry));
-    if (foreach_data_region_fd(src_fd, filepath, holes, hole_count,
-          (uint64_t)st.st_size, buf, sizeof(buf), hash_chunk, &state) != 0) {
-      close(src_fd); free(holes); return -1;
-    }
-    header.checksum = (uint64_t)XXH64_digest(&state);
-
-    if (fwrite(&header, sizeof(header), 1, archive) != 1) {
-      fprintf(stderr, "error: failed to write header for '%s'\n", filepath);
-      close(src_fd); free(holes); return -1;
-    }
-    if (holes && hole_count > 0) {
-      if (fwrite(holes, sizeof(HoleEntry), hole_count, archive) != hole_count) {
-        fprintf(stderr, "error: failed to write hole map for '%s'\n", filepath);
-        close(src_fd); free(holes); return -1;
-      }
-    }
-    wctx.dst = archive; wctx.path = filepath;
-    if (foreach_data_region_fd(src_fd, filepath, holes, hole_count,
-          (uint64_t)st.st_size, buf, sizeof(buf), write_chunk, &wctx) != 0) {
-      close(src_fd); free(holes); return -1;
-    }
+  /* Write pass: archive is written linearly; no seeking, buffer stays full. */
+  wctx.dst = archive; wctx.path = filepath;
+  if (foreach_data_region_fd(src_fd, filepath, holes, hole_count,
+        (uint64_t)st.st_size, buf, sizeof(buf), write_chunk, &wctx) != 0) {
+    close(src_fd); free(holes); return -1;
   }
 
   close(src_fd);
