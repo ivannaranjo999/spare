@@ -1,23 +1,19 @@
-# SPARE - SParse Archive RElay 🍁
-SParse Archive RElay, SPARE, is a C tool that is able to **archive** a list of files and directories in a single file and **compress** it if desired. SPARE also allows actions like:
+# SPARE - SParse Archive RElay
 
-- 🌲 Listing the contents of a `.spa|.szt` file.
-- 🌳 Grabbing specific files or directories from a `.spa|.szt` file.
-- 🌴 Inserting specific files or directories to a `.spa|.szt` file.
-- 🌻 Flags for multithreading in packing and compression.
-
-The tool is used as follows:
+SPARE is a fast archiver written in C, designed for sysadmins and storage engineers. Its key feature is **sparse file support**: VM disk images, database files, and other sparse files are packed and restored with their holes intact, so you never pay to store or transfer zero-filled regions.
 
 ```
 Usage:
 Actions:
-  spare p   <archive.spa> <file1..fileN>       Pack given files or folders to a SPARE archive.
-  spare pz  <archive.szt> <file1..fileN>       Pack given files or folders to a SPARE archive and compress it.
-  spare u   <archive.spa|.szt>                 Unpack SPARE archive.
-  spare l   <archive.spa|.szt>                 List files contained in a SPARE archive.
-  spare g   <archive.spa|.szt> <file1..fileN>  Grab specific files contained in a SPARE archive.
-  spare i   <archive.spa|.szt> <file1..fileN>  Insert specific files to a SPARE archive.
+  spare p   <archive.spa> <file1..fileN>       Pack files or directories into a SPA archive.
+  spare pz  <archive.szt> <file1..fileN>       Pack and compress (zstd) into a SPA archive.
+  spare u   <archive.spa|.szt>                 Unpack a SPA archive.
+  spare l   <archive.spa|.szt>                 List contents of a SPA archive.
+  spare g   <archive.spa|.szt> <file1..fileN>  Extract specific files from a SPA archive.
+  spare i   <archive.spa|.szt> <file1..fileN>  Insert files into an existing SPA archive.
 Flags:
+  -h         print this help.
+  -V         print version.
   -v         verbose output.
   -j [N]     use N threads for packing and compression (default: all cores).
   -z         when archive path is '-', treat stdin as compressed (SZT).
@@ -25,44 +21,54 @@ Flags:
   -C <dir>   extract files into <dir> instead of current directory.
 ```
 ## Benchmarks
-### Conditions
-The following command is run before every command to ensure OS page caching are dropped. 
+
+OS page caches are dropped before each run:
 ```
 sync && echo 3 | sudo tee /proc/sys/vm/drop_caches
 ```
+Each command is run **three times**; the **median** wall-clock time is reported. Run `bash bench/bench.sh` to reproduce.
 
-Each command is ran **thrice** and the **median** is taken.
+---
 
-### Results
-**Real (wall-clock) time** for [Linux kernel 7.0](https://cdn.kernel.org/pub/linux/kernel/v7.x/linux-7.0.tar.xz)
-| Operation         | tar      | spare      | spare -j4 |
-|-------------------|----------|----------|-----|
-| Pack              | 19.658s  | 21.499s  | 13.889s  |
-| Pack and compress | 47.003s  | 30.079s  | 17.650s  |
-| Unpack            |  2.691s  |  2.843s  | -        |
-| Unpack compressed |  5.332s  |  4.522s  | -        |
+### Linux kernel 7.0, many small files
 
-**User time** for [Linux kernel 7.0](https://cdn.kernel.org/pub/linux/kernel/v7.x/linux-7.0.tar.xz)
-| Operation         | tar      | spare      | spare -j4 |
-|-------------------|----------|----------|-----|
-| Pack              |  1.070s  |  1.564s  |  1.764s  |
-| Pack and compress | 46.568s  |  9.110s  | 24.185s  |
-| Unpack            |  0.524s  |  0.660s  | -        |
-| Unpack compressed |  5.401s  |  3.056s  | -        |
+~75,000 files, ~1.5 GB on disk. Tests archiver throughput on a realistic source tree.
 
-**Sys time** for [Linux kernel 7.0](https://cdn.kernel.org/pub/linux/kernel/v7.x/linux-7.0.tar.xz)
-| Operation         | tar      | spare      | spare -j4 |
-|-------------------|----------|----------|-----|
-| Pack              |  5.563s  |  6.054s  |  7.873s  |
-| Pack and compress |  4.629s  |  7.626s  |  7.805s  |
-| Unpack            |  2.118s  |  2.070s  | -        |
-| Unpack compressed |  2.708s  |  2.927s  | -        |
+**Wall-clock time**
 
-**Compression ratios** for [Linux kernel 7.0](https://cdn.kernel.org/pub/linux/kernel/v7.x/linux-7.0.tar.xz)
-|  | tar czf | spare pz | spare -j4 pz |
+| Operation         | tar     | spare   | spare -j4 |
 |---|---|---|---|
-| Absolute values | 265615532/1568397485 | 241568771/1568397485 | 241278130/1568397485 |
-| Ratio           | 16.94% | 15.40% | 15.38% |
+| Pack              | 19.658s | 21.499s | 13.889s |
+| Pack and compress | 47.003s | 30.079s | 17.650s |
+| Unpack            |  2.691s |  2.843s | - |
+| Unpack compressed |  5.332s |  4.522s | - |
+
+**Compressed archive size** (source: 1,568 MB)
+
+| tar czf | spare pz | spare -j4 pz |
+|---|---|---|
+| 253 MB (16.9%) | 230 MB (15.4%) | 230 MB (15.4%) |
+
+---
+
+### Sparse VM image, 4 GB image, ~20% real data
+
+A raw QEMU disk image: 4 GB logical size, ~820 MB allocated on disk, the rest zeroed holes. Represents the common case for VM disks, database files, and thin-provisioned volumes.
+
+**Pack: archive size and wall-clock time**
+
+| | tar cf | tar --sparse -cf | spare p | spare -S p | spare -S -j4 p |
+|---|---|---|---|---|---|
+| Archive size | - | - | - | - | - |
+| Pack time    | - | - | - | - | - |
+
+**Unpack and hole restoration**
+
+| | tar --sparse -xf | spare -S u |
+|---|---|---|
+| Unpack time | - | - |
+
+*Run `bash bench/bench.sh --sparse-only` to fill in these numbers.*
 
 ## Stdin / Stdout piping
 
@@ -93,7 +99,7 @@ Use `-z` when reading a compressed archive from stdin so SPARE knows the format 
 The zero-disk guarantee only holds end-to-end when both sides of the pipe use uncompressed single-threaded operations. For example, `spare pz - | ssh host "spare u - -z"` writes a temp file on **both** machines.
 
 ## The format
-SPARE archives are just a flat binary file which is built as a concatenation of blocks, one per file. Each block contains a header and the file contents. The header is a fixed-size C struct storing everything needed to reconstruct the file.
+SPA archives are just a flat binary file which is built as a concatenation of blocks, one per file. Each block contains a header and the file contents. The header is a fixed-size C struct storing everything needed to reconstruct the file.
 
 ```
 [ FileHeader | HoleEntry[hole_count] | stored_size bytes ]  ...
@@ -104,7 +110,7 @@ SPARE archives are just a flat binary file which is built as a concatenation of 
 | Field | Type | Offset | Description |
 |---|---|---|---|
 | magic | char[3] | 0 | Always `"SPA"` |
-| version | uint8 | 3 | Format version (3) |
+| version | uint8 | 3 | Format version (4) |
 | filename | char[4096] | 4 | Stored path |
 | mode | uint32 | 4100 | File permissions and type |
 | uid | uint32 | 4104 | Owner user ID |
