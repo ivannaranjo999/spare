@@ -158,6 +158,27 @@ static int mkdir_parents(const char *filepath, DirCache *cache, int verbose){
 }
 
 /* ----------------------------------------------------------------------------
+ * write_all
+ *
+ * Write n bytes from buf to fd.
+ * Returns 0 on success, -1 on error.
+ * ------------------------------------------------------------------------- */
+static int write_all(int fd, const void *buf, size_t n) {
+  /* Local variables */
+  const char *p = (const char *)buf;
+  ssize_t nw;
+
+  /* Code */
+  while (n > 0) {
+    nw = write(fd, p, n);
+    if (nw <= 0) return -1;
+    p += nw;
+    n -= (size_t)nw;
+  }
+  return 0;
+}
+
+/* ----------------------------------------------------------------------------
  * unpack_file
  *
  * Read one (header + hole map + data) block from the archive and write the
@@ -166,10 +187,9 @@ static int mkdir_parents(const char *filepath, DirCache *cache, int verbose){
  *         0 if we have reached EOF
  *        -1 on error
  * ------------------------------------------------------------------------- */
-int unpack_file(FILE *archive, DirCache *cache , int verbose){
+int unpack_file(FILE *archive, DirCache *cache, int is_root, int verbose){
   /* Local variables */
   FileHeader header;
-  FILE *dst;
   int fd_dst;
   char buf[COPY_BUFFER_SIZE];
   uint64_t remaining, len;
@@ -178,7 +198,7 @@ int unpack_file(FILE *archive, DirCache *cache , int verbose){
   uint64_t region_start;
   uint64_t region_end;
   uint64_t i;
-  size_t bytes_read, to_write, n, chunk;
+  size_t bytes_read, n, chunk;
   struct utimbuf times;
   char linkbuf[SPARE_MAX_PATH];
   XXH64_state_t state;
@@ -198,7 +218,7 @@ int unpack_file(FILE *archive, DirCache *cache , int verbose){
 
   /* Validate magic bytes */
   if(memcmp(header.magic, SPARE_MAGIC, 3) != 0){
-    fprintf(stderr, "error: bad magic - make sure this is a sar archive\n");
+    fprintf(stderr, "error: bad magic - make sure this is a spa archive\n");
     return -1;
   }
 
@@ -272,10 +292,9 @@ int unpack_file(FILE *archive, DirCache *cache , int verbose){
       return -1;
     }
 
-    /* Restore ownership; EPERM is expected when not root */
-    if (lchown(header.filename, (uid_t)header.uid, (gid_t)header.gid) != 0
-        && errno != EPERM)
-      perror("lchown");
+    /* Restore ownership */
+    if (is_root)
+      lchown(header.filename, (uid_t)header.uid, (gid_t)header.gid);
 
     if (verbose)
       printf("unpacked: '%s' -> '%s'\n", header.filename, linkbuf);
@@ -285,16 +304,13 @@ int unpack_file(FILE *archive, DirCache *cache , int verbose){
   }
 
   /* Open destination file */
-  dst = fopen(header.filename, "wb");
-  if (dst == NULL){
+  fd_dst = open(header.filename, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+  if (fd_dst < 0){
     perror(header.filename);
     fseek(archive, (long)header.stored_size, SEEK_CUR);
     free(holes);
     return -1;
   }
-  setvbuf(dst, NULL, _IOFBF, SPARE_FILE_BUF_SIZE);
-
-  fd_dst = fileno(dst);
 
   XXH64_reset(&state, 0);
   XXH64_update(&state, &header, sizeof(header));
@@ -302,7 +318,7 @@ int unpack_file(FILE *archive, DirCache *cache , int verbose){
     XXH64_update(&state, holes, header.hole_count * sizeof(HoleEntry));
 
   if (header.hole_count == 0) {
-    /* Dense file: sequential read+write, identical to pre-sparse behaviour */
+    /* Dense file: sequential read+write */
     remaining = header.stored_size;
     while(remaining > 0){
       chunk = remaining < sizeof(buf) ? remaining : sizeof(buf);
@@ -312,19 +328,16 @@ int unpack_file(FILE *archive, DirCache *cache , int verbose){
         fprintf(stderr,
           "error: unexpected end of archive while reading '%s'\n",
           header.filename);
-        fclose(dst);
+        close(fd_dst);
         free(holes);
         return -1;
       }
 
       XXH64_update(&state, buf, bytes_read);
 
-      to_write = bytes_read;
-      if(fwrite(buf, 1, to_write, dst) != to_write){
-        fprintf(stderr,
-          "error: failed to write to '%s'\n",
-          header.filename);
-        fclose(dst);
+      if(write_all(fd_dst, buf, bytes_read) != 0){
+        fprintf(stderr, "error: failed to write to '%s'\n", header.filename);
+        close(fd_dst);
         free(holes);
         return -1;
       }
@@ -336,7 +349,7 @@ int unpack_file(FILE *archive, DirCache *cache , int verbose){
      * then punch holes so the file is genuinely sparse on disk. */
     if (ftruncate(fd_dst, (off_t)header.file_size) != 0) {
       perror("ftruncate");
-      fclose(dst);
+      close(fd_dst);
       fseek(archive, (long)header.stored_size, SEEK_CUR);
       unlink(header.filename);
       free(holes);
@@ -350,9 +363,9 @@ int unpack_file(FILE *archive, DirCache *cache , int verbose){
                                             : holes[i].offset;
       if (region_start >= region_end) continue;
 
-      if (fseeko(dst, (off_t)region_start, SEEK_SET) != 0) {
+      if (lseek(fd_dst, (off_t)region_start, SEEK_SET) == (off_t)-1) {
         perror(header.filename);
-        fclose(dst);
+        close(fd_dst);
         unlink(header.filename);
         free(holes);
         return -1;
@@ -366,15 +379,15 @@ int unpack_file(FILE *archive, DirCache *cache , int verbose){
           fprintf(stderr,
             "error: unexpected end of archive while reading '%s'\n",
             header.filename);
-          fclose(dst);
+          close(fd_dst);
           unlink(header.filename);
           free(holes);
           return -1;
         }
         XXH64_update(&state, buf, bytes_read);
-        if (fwrite(buf, 1, bytes_read, dst) != bytes_read) {
+        if (write_all(fd_dst, buf, bytes_read) != 0) {
           fprintf(stderr, "error: failed to write to '%s'\n", header.filename);
-          fclose(dst);
+          close(fd_dst);
           unlink(header.filename);
           free(holes);
           return -1;
@@ -390,7 +403,7 @@ int unpack_file(FILE *archive, DirCache *cache , int verbose){
     }
   }
 
-  fclose(dst);
+  close(fd_dst);
 
   computed_checksum = (uint64_t)XXH64_digest(&state);
   if (computed_checksum != stored_checksum) {
@@ -403,24 +416,18 @@ int unpack_file(FILE *archive, DirCache *cache , int verbose){
   free(holes);
 
   /* Restore ownership before chmod: lchown can clear setuid/setgid bits,
-   * so chmod must come after to restore the full mode. EPERM is expected
-   * when not root. */
-  if (lchown(header.filename, (uid_t)header.uid, (gid_t)header.gid) != 0
-      && errno != EPERM)
-    perror("lchown");
+   * so chmod must come after to restore the full mode. */
+  if (is_root)
+    lchown(header.filename, (uid_t)header.uid, (gid_t)header.gid);
 
-  /* Restore permissions */
-  if(chmod(header.filename, (mode_t)header.mode) != 0){
+  if(chmod(header.filename, (mode_t)header.mode) != 0)
     perror("chmod");
-  }
 
   /* Restore modification time */
-  times.actime  = (time_t)header.mtime; /* access time = mtime */
-  times.modtime = (time_t)header.mtime; /* last modified time */
-
-  if (utime(header.filename, &times) != 0) {
+  times.actime  = (time_t)header.mtime;
+  times.modtime = (time_t)header.mtime;
+  if (utime(header.filename, &times) != 0)
     perror("utime");
-  }
 
   if(verbose)
     printf("unpacked: '%s' (%llu bytes)\n",
@@ -439,17 +446,19 @@ int unpack(FILE *archive, int verbose){
   /* Local variables */
   int result = 0;
   int status;
+  int is_root;
   DirCache cache;
 
   /* Code */
+  is_root = (getuid() == 0);
+
   /* Init mkdir cache */
   dircache_init(&cache);
 
-  while((status = unpack_file(archive, &cache ,verbose)) == 1){
-    /* Keep going until EOF or error */
+  while((status = unpack_file(archive, &cache, is_root, verbose)) == 1){
+    /* keep going until EOF or error */
   }
 
-  /* Free mkdir cache */
   dircache_free(&cache);
 
   if(status == -1) result = -1;

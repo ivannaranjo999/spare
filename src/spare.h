@@ -77,7 +77,7 @@ int pack(FILE *archive_path, const char **filepaths, int count, int sparse, int 
 int pack_file(FILE *archive, const char *filepath, int sparse, int verbose);
 int pack_threads(const char *archive_path, const char **filepaths, int count, int sparse, int verbose);
 int unpack(FILE *archive_path, int verbose);
-int unpack_file(FILE *archive, DirCache *cache, int verbose);
+int unpack_file(FILE *archive, DirCache *cache, int is_root, int verbose);
 int compress_arch(const char *dst_path, const char *src_path, int verbose);
 int decompress_arch(const char *dst_path, const char *src_path, int verbose);
 int decompress_arch_ram(FILE **dst_fp, const char *src_path,

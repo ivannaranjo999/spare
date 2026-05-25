@@ -29,6 +29,7 @@ int grab(FILE *archive, const char **filepaths, int count, int verbose){
   int status = 0;
   int exitLoop = 0;
   int matched = 0;
+  int is_root;
   size_t n = 0;
   FileHeader header;
   DirCache cache;
@@ -46,7 +47,7 @@ int grab(FILE *archive, const char **filepaths, int count, int verbose){
     }
   } else {
     if(memcmp(header.magic, SPARE_MAGIC, 3) != 0){
-      fprintf(stderr, "error: bad magic - not a SAR archive\n");
+      fprintf(stderr, "error: bad magic - not a SPA archive\n");
       result = -1;
       exitLoop = 1;
     } else if(header.version != SPARE_VERSION){
@@ -56,7 +57,7 @@ int grab(FILE *archive, const char **filepaths, int count, int verbose){
     }
   }
 
-  /* Init mkdir cache */
+  is_root = (getuid() == 0);
   dircache_init(&cache);
 
   /* Exit loop when EOF reached */
@@ -70,7 +71,7 @@ int grab(FILE *archive, const char **filepaths, int count, int verbose){
       fseek(archive, -sizeof(FileHeader), SEEK_CUR);
 
       /* Extract file */
-      status = unpack_file(archive, &cache ,verbose);
+      status = unpack_file(archive, &cache, is_root, verbose);
       if(status == -1) {
         result = -1;
         fprintf(stderr, "error: could not unpack '%s'\n", header.filename);
@@ -99,7 +100,7 @@ int grab(FILE *archive, const char **filepaths, int count, int verbose){
       }
     } else {
       if(memcmp(header.magic, SPARE_MAGIC, 3) != 0){
-        fprintf(stderr, "error: bad magic - not a SAR archive\n");
+        fprintf(stderr, "error: bad magic - not a SPA archive\n");
         result = -1;
         exitLoop = 1;
       } else if(header.version != SPARE_VERSION){

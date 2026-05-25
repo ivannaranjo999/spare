@@ -26,7 +26,7 @@ static int get_filename(FILE *archive){
   }
 
   if(memcmp(header.magic, SPARE_MAGIC, 3) != 0){
-    fprintf(stderr, "error: bad magic - not a SAR archive\n");
+    fprintf(stderr, "error: bad magic - not a SPA archive\n");
     return -1;
   }
   if(header.version != SPARE_VERSION){

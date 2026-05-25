@@ -72,52 +72,62 @@ static int memcpy_chunk(const void *buf, size_t n, void *ctx) {
   return 0;
 }
 
+/* Hash and write each chunk in one pass; used for single-pass pack_file */
+typedef struct {
+  FILE *dst;
+  const char *path;
+  XXH64_state_t *state;
+} HashWriteCtx;
+
+static int hash_write_chunk(const void *buf, size_t n, void *ctx) {
+  HashWriteCtx *c = ctx;
+  XXH64_update(c->state, buf, n);
+  if (fwrite(buf, 1, n, c->dst) != n) {
+    fprintf(stderr, "error: failed to write data for '%s'\n", c->path);
+    return -1;
+  }
+  return 0;
+}
+
 /* ----------------------------------------------------------------------------
- * foreach_data_region
+ * foreach_data_region_fd
  *
  * Reads every data byte of src (skipping sparse holes) and calls cb for each
- * chunk read. Dense files (hole_count == 0) are read sequentially; sparse
- * files seek to each data region in turn. buf/buf_size is the caller-provided
- * scratch buffer. filepath is used only for error messages.
+ * chunk read. filepath is used only for error messages.
  * Returns 0 on success, -1 on I/O error or if cb returns -1.
  * ------------------------------------------------------------------------- */
-static int foreach_data_region(FILE *src, const char *filepath,
+static int foreach_data_region_fd(int fd, const char *filepath,
     const HoleEntry *holes, uint64_t hole_count, uint64_t file_size,
     void *buf, size_t buf_size, DataChunkCb cb, void *ctx) {
-  /* Local variables */
   uint64_t i, region_start, region_end, remaining;
-  size_t bytes_read, chunk;
+  size_t chunk;
+  ssize_t nr;
 
-  /* Code */
   if (hole_count == 0) {
-    /* dense: sequential read */
-    while ((bytes_read = fread(buf, 1, buf_size, src)) > 0) {
-      if (cb(buf, bytes_read, ctx) != 0) return -1;
+    if (lseek(fd, 0, SEEK_SET) == (off_t)-1) { perror(filepath); return -1; }
+    for (;;) {
+      nr = read(fd, buf, buf_size);
+      if (nr == 0) break;
+      if (nr < 0) { perror(filepath); return -1; }
+      if (cb(buf, (size_t)nr, ctx) != 0) return -1;
     }
   } else {
-    /* sparse: only read data regions, skip holes */
     for (i = 0; i <= hole_count; i++) {
       region_start = (i == 0) ? 0 : holes[i-1].offset + holes[i-1].length;
       region_end   = (i == hole_count) ? file_size : holes[i].offset;
       if (region_start >= region_end) continue;
-      if (fseeko(src, (off_t)region_start, SEEK_SET) != 0) {
-        perror(filepath);
-        return -1;
+      if (lseek(fd, (off_t)region_start, SEEK_SET) == (off_t)-1) {
+        perror(filepath); return -1;
       }
       remaining = region_end - region_start;
       while (remaining > 0) {
         chunk = remaining < buf_size ? (size_t)remaining : buf_size;
-        bytes_read = fread(buf, 1, chunk, src);
-        if (bytes_read == 0) break;
-        if (cb(buf, bytes_read, ctx) != 0) return -1;
-        remaining -= bytes_read;
+        nr = read(fd, buf, chunk);
+        if (nr <= 0) break;
+        if (cb(buf, (size_t)nr, ctx) != 0) return -1;
+        remaining -= (size_t)nr;
       }
     }
-  }
-
-  if (ferror(src)) {
-    fprintf(stderr, "error: failed to read '%s'\n", filepath);
-    return -1;
   }
   return 0;
 }
@@ -407,7 +417,7 @@ static int write_item(const WorkItem *w, int verbose){
   HoleEntry *hole_dest;
   uint8_t *data_dest;
   uint8_t buf[COPY_BUFFER_SIZE];
-  FILE *src;
+  int src_fd;
 
   /* Code */
   fill_header(header, w->filepath, w->file_size, w->stored_size, w->hole_count,
@@ -419,7 +429,6 @@ static int write_item(const WorkItem *w, int verbose){
 
   data_dest = w->dest + sizeof(FileHeader) + w->hole_count * sizeof(HoleEntry);
 
-  /* If symlink, do not fopen anything */
   if (S_ISLNK(w->mode)) {
     memcpy(data_dest, w->linkpath, w->file_size);
     header->checksum = checksum_compute(header, NULL, 0, data_dest, w->file_size);
@@ -428,21 +437,19 @@ static int write_item(const WorkItem *w, int verbose){
     return 0;
   }
 
-  /* read file data directly into mmap region after the header + hole map */
-  src = fopen(w->filepath, "rb");
-  if (src == NULL) {
+  src_fd = open(w->filepath, O_RDONLY);
+  if (src_fd < 0) {
     perror(w->filepath);
     return -1;
   }
-  setvbuf(src, NULL, _IOFBF, SPARE_FILE_BUF_SIZE);
 
-  if (foreach_data_region(src, w->filepath, w->holes, w->hole_count, w->file_size,
+  if (foreach_data_region_fd(src_fd, w->filepath, w->holes, w->hole_count, w->file_size,
         buf, sizeof(buf), memcpy_chunk, &data_dest) != 0) {
-    fclose(src);
+    close(src_fd);
     return -1;
   }
 
-  fclose(src);
+  close(src_fd);
 
   header->checksum = checksum_compute(header, w->holes, w->hole_count,
     w->dest + sizeof(FileHeader) + w->hole_count * sizeof(HoleEntry),
@@ -634,7 +641,7 @@ int pack_threads(const char *archive_path, const char **filepaths, int count,
 int pack_file(FILE *archive, const char *filepath, int sparse, int verbose){
   /* Local variables */
   struct stat st;
-  FILE *src;
+  int src_fd;
   DIR *dir;
   struct dirent *entry;
   FileHeader header;
@@ -644,10 +651,11 @@ int pack_file(FILE *archive, const char *filepath, int sparse, int verbose){
   ssize_t linklen;
   XXH64_state_t state;
   WriteCtx wctx;
+  HashWriteCtx hwctx;
   HoleEntry *holes;
   uint64_t hole_count;
   uint64_t stored_size;
-  int fd;
+  off_t header_pos, data_end;
   int result = 0;
 
   /* Code */
@@ -655,13 +663,12 @@ int pack_file(FILE *archive, const char *filepath, int sparse, int verbose){
   hole_count = 0;
   stored_size = 0;
 
-  /* Read metadata with lstat to not follow symlinks */
   if (lstat(filepath, &st) != 0) {
     perror(filepath);
     return -1;
   }
 
-  /* If symlink, store the link target as file data */
+  /* Symlink: store the link target as file data */
   if (S_ISLNK(st.st_mode)) {
     linklen = readlink(filepath, linkbuf, sizeof(linkbuf) - 1);
     if (linklen < 0) {
@@ -676,13 +683,10 @@ int pack_file(FILE *archive, const char *filepath, int sparse, int verbose){
     header.checksum = checksum_compute(&header, NULL, 0,
       linkbuf, (uint64_t)linklen);
 
-    /* Write header */
     if (fwrite(&header, sizeof(header), 1, archive) != 1) {
       fprintf(stderr, "error: failed to write header for '%s'\n", filepath);
       return -1;
     }
-
-    /* Write target path as file data */
     if (fwrite(linkbuf, 1, linklen, archive) != (size_t)linklen) {
       fprintf(stderr, "error: failed to write symlink target for '%s'\n",
         filepath);
@@ -691,12 +695,10 @@ int pack_file(FILE *archive, const char *filepath, int sparse, int verbose){
 
     if (verbose)
       printf("packed: '%s' -> '%s'\n", filepath, linkbuf);
-
-    /* Do not continue */
     return 0;
   }
 
-  /* If dir, recurse */
+  /* Directory: recurse */
   if(S_ISDIR(st.st_mode)){
     dir = opendir(filepath);
     if (dir == NULL){
@@ -716,73 +718,93 @@ int pack_file(FILE *archive, const char *filepath, int sparse, int verbose){
       if (pack_file(archive, fullpath, sparse, verbose) != 0) result = -1;
     }
     closedir(dir);
-
-    /* Do not continue */
     return result;
   }
 
-  /* Operate only regular files */
   if (!S_ISREG(st.st_mode)) {
     fprintf(stderr, "skipping '%s': not a regular file\n", filepath);
     return -1;
   }
 
-  /* Open file */
-  src = fopen(filepath, "rb");
-  if (src == NULL){
+  /* Open source */
+  src_fd = open(filepath, O_RDONLY);
+  if (src_fd < 0){
     perror(filepath);
     return -1;
   }
-  setvbuf(src, NULL, _IOFBF, SPARE_FILE_BUF_SIZE);
 
   stored_size = (uint64_t)st.st_size;
 
-  /* Hole detection via the already-open fd: lseeks only, no data read */
-  if (sparse && st.st_size > 0) {
-    fd = fileno(src);
-    build_hole_map(fd, (uint64_t)st.st_size, &holes, &hole_count, &stored_size);
-    rewind(src);
-  }
+  if (sparse && st.st_size > 0)
+    build_hole_map(src_fd, (uint64_t)st.st_size, &holes, &hole_count, &stored_size);
 
   fill_header(&header, filepath, (uint64_t)st.st_size, stored_size, hole_count,
     (uint32_t)st.st_mode, (uint32_t)st.st_uid,
     (uint32_t)st.st_gid, (int64_t)st.st_mtime);
 
-  /* First pass: compute checksum over header + hole map + file data regions */
-  XXH64_reset(&state, 0);
-  XXH64_update(&state, &header, sizeof(header));
-  if (holes && hole_count > 0)
-    XXH64_update(&state, holes, hole_count * sizeof(HoleEntry));
-  if (foreach_data_region(src, filepath, holes, hole_count, (uint64_t)st.st_size,
-    buf, sizeof(buf), hash_chunk, &state) != 0) {
-    fclose(src); free(holes); return -1;
+  {
+    int _fl = fcntl(fileno(archive), F_GETFL);
+    header_pos = (_fl != -1 && (_fl & O_APPEND)) ? (off_t)-1 : ftello(archive);
   }
-  header.checksum = (uint64_t)XXH64_digest(&state);
-  rewind(src);
+  if (header_pos != (off_t)-1) {
+    if (fwrite(&header, sizeof(header), 1, archive) != 1) {
+      fprintf(stderr, "error: failed to write header for '%s'\n", filepath);
+      close(src_fd); free(holes); return -1;
+    }
+    if (holes && hole_count > 0) {
+      if (fwrite(holes, sizeof(HoleEntry), hole_count, archive) != hole_count) {
+        fprintf(stderr, "error: failed to write hole map for '%s'\n", filepath);
+        close(src_fd); free(holes); return -1;
+      }
+    }
 
-  /* Write header to archive */
-  if (fwrite(&header, sizeof(header), 1, archive) != 1){
-    fprintf(stderr, "error: failed to write header for '%s'\n", filepath);
-    fclose(src); free(holes); return -1;
-  }
+    XXH64_reset(&state, 0);
+    XXH64_update(&state, &header, sizeof(header));
+    if (holes && hole_count > 0)
+      XXH64_update(&state, holes, hole_count * sizeof(HoleEntry));
 
-  /* Write hole map (if sparse) */
-  if (holes && hole_count > 0) {
-    if (fwrite(holes, sizeof(HoleEntry), hole_count, archive) != hole_count) {
-      fprintf(stderr, "error: failed to write hole map for '%s'\n", filepath);
-      fclose(src); free(holes); return -1;
+    hwctx.dst = archive; hwctx.path = filepath; hwctx.state = &state;
+    if (foreach_data_region_fd(src_fd, filepath, holes, hole_count,
+          (uint64_t)st.st_size, buf, sizeof(buf), hash_write_chunk, &hwctx) != 0) {
+      close(src_fd); free(holes); return -1;
+    }
+    header.checksum = (uint64_t)XXH64_digest(&state);
+
+    data_end = ftello(archive);
+    if (fseeko(archive, header_pos, SEEK_SET) == 0) {
+      fwrite(&header, sizeof(header), 1, archive);
+      fseeko(archive, data_end, SEEK_SET);
+    }
+  } else {
+    /* Non-seekable (stdout): hash pass then write pass, both using fd reads */
+    XXH64_reset(&state, 0);
+    XXH64_update(&state, &header, sizeof(header));
+    if (holes && hole_count > 0)
+      XXH64_update(&state, holes, hole_count * sizeof(HoleEntry));
+    if (foreach_data_region_fd(src_fd, filepath, holes, hole_count,
+          (uint64_t)st.st_size, buf, sizeof(buf), hash_chunk, &state) != 0) {
+      close(src_fd); free(holes); return -1;
+    }
+    header.checksum = (uint64_t)XXH64_digest(&state);
+
+    if (fwrite(&header, sizeof(header), 1, archive) != 1) {
+      fprintf(stderr, "error: failed to write header for '%s'\n", filepath);
+      close(src_fd); free(holes); return -1;
+    }
+    if (holes && hole_count > 0) {
+      if (fwrite(holes, sizeof(HoleEntry), hole_count, archive) != hole_count) {
+        fprintf(stderr, "error: failed to write hole map for '%s'\n", filepath);
+        close(src_fd); free(holes); return -1;
+      }
+    }
+    wctx.dst = archive; wctx.path = filepath;
+    if (foreach_data_region_fd(src_fd, filepath, holes, hole_count,
+          (uint64_t)st.st_size, buf, sizeof(buf), write_chunk, &wctx) != 0) {
+      close(src_fd); free(holes); return -1;
     }
   }
 
-  /* Second pass: write data regions to archive */
-  wctx.dst  = archive;
-  wctx.path = filepath;
-  if (foreach_data_region(src, filepath, holes, hole_count, (uint64_t)st.st_size,
-        buf, sizeof(buf), write_chunk, &wctx) != 0) {
-    fclose(src); free(holes); return -1;
-  }
-
-  fclose(src);
+  close(src_fd);
   free(holes);
 
   if (verbose)
