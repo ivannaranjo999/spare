@@ -190,6 +190,7 @@ static int write_all(int fd, const void *buf, size_t n) {
 int unpack_file(FILE *archive, DirCache *cache, int is_root, int verbose){
   /* Local variables */
   FileHeader header;
+  char filename[SPARE_MAX_PATH];
   int fd_dst;
   char buf[COPY_BUFFER_SIZE];
   uint64_t remaining, len;
@@ -228,8 +229,16 @@ int unpack_file(FILE *archive, DirCache *cache, int is_root, int verbose){
     return -1;
   }
 
-  /* Ensure filename is null terminated */
-  header.filename[SPARE_MAX_PATH - 1] = '\0';
+  /* Read variable-length filename */
+  if(header.name_len == 0 || header.name_len >= SPARE_MAX_PATH){
+    fprintf(stderr, "error: invalid name_len %u\n", header.name_len);
+    return -1;
+  }
+  if(fread(filename, 1, header.name_len, archive) != header.name_len){
+    fprintf(stderr, "error: failed to read filename\n");
+    return -1;
+  }
+  filename[header.name_len] = '\0';
 
   /* Save and zero checksum so it is excluded from hash recomputation */
   stored_checksum = header.checksum;
@@ -237,10 +246,10 @@ int unpack_file(FILE *archive, DirCache *cache, int is_root, int verbose){
 
   /* Create parent dirs if needed.
    * At this point holes haven't been read, so skip hole map + data. */
-  if(mkdir_parents(header.filename, cache, verbose) != 0){
+  if(mkdir_parents(filename, cache, verbose) != 0){
     fseek(archive, (long)(header.hole_count * sizeof(HoleEntry)
                          + header.stored_size), SEEK_CUR);
-    fprintf(stderr, "error: could not create parent dirs for '%s'\n", header.filename);
+    fprintf(stderr, "error: could not create parent dirs for '%s'\n", filename);
     return -1;
   }
 
@@ -255,8 +264,7 @@ int unpack_file(FILE *archive, DirCache *cache, int is_root, int verbose){
     }
     if (fread(holes, sizeof(HoleEntry), header.hole_count, archive)
         != header.hole_count) {
-      fprintf(stderr, "error: failed to read hole map for '%s'\n",
-        header.filename);
+      fprintf(stderr, "error: failed to read hole map for '%s'\n", filename);
       free(holes);
       return -1;
     }
@@ -270,43 +278,44 @@ int unpack_file(FILE *archive, DirCache *cache, int is_root, int verbose){
     /* read target path string from archive */
     if (fread(linkbuf, 1, len, archive) != len) {
       fprintf(stderr, "error: failed to read symlink target for '%s'\n",
-        header.filename);
+        filename);
       free(holes);
       return -1;
     }
     linkbuf[len] = '\0';
 
-    computed_checksum = checksum_compute(&header, NULL, 0, linkbuf, len);
+    computed_checksum = checksum_compute(&header, filename, header.name_len,
+      NULL, 0, linkbuf, len);
     if (computed_checksum != stored_checksum) {
-      fprintf(stderr, "error: checksum mismatch for '%s'\n", header.filename);
+      fprintf(stderr, "error: checksum mismatch for '%s'\n", filename);
       free(holes);
       return -1;
     }
 
     /* remove existing file/link at destination if any */
-    unlink(header.filename);
+    unlink(filename);
 
-    if (symlink(linkbuf, header.filename) != 0) {
-      perror(header.filename);
+    if (symlink(linkbuf, filename) != 0) {
+      perror(filename);
       free(holes);
       return -1;
     }
 
     /* Restore ownership */
     if (is_root)
-      lchown(header.filename, (uid_t)header.uid, (gid_t)header.gid);
+      lchown(filename, (uid_t)header.uid, (gid_t)header.gid);
 
     if (verbose)
-      printf("unpacked: '%s' -> '%s'\n", header.filename, linkbuf);
+      printf("unpacked: '%s' -> '%s'\n", filename, linkbuf);
 
     free(holes);
     return 1;
   }
 
   /* Open destination file */
-  fd_dst = open(header.filename, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+  fd_dst = open(filename, O_WRONLY | O_CREAT | O_TRUNC, 0600);
   if (fd_dst < 0){
-    perror(header.filename);
+    perror(filename);
     fseek(archive, (long)header.stored_size, SEEK_CUR);
     free(holes);
     return -1;
@@ -314,6 +323,7 @@ int unpack_file(FILE *archive, DirCache *cache, int is_root, int verbose){
 
   XXH64_reset(&state, 0);
   XXH64_update(&state, &header, sizeof(header));
+  XXH64_update(&state, filename, header.name_len);
   if (holes && header.hole_count > 0)
     XXH64_update(&state, holes, header.hole_count * sizeof(HoleEntry));
 
@@ -326,8 +336,7 @@ int unpack_file(FILE *archive, DirCache *cache, int is_root, int verbose){
       bytes_read = fread(buf, 1, chunk, archive);
       if(bytes_read == 0){
         fprintf(stderr,
-          "error: unexpected end of archive while reading '%s'\n",
-          header.filename);
+          "error: unexpected end of archive while reading '%s'\n", filename);
         close(fd_dst);
         free(holes);
         return -1;
@@ -336,7 +345,7 @@ int unpack_file(FILE *archive, DirCache *cache, int is_root, int verbose){
       XXH64_update(&state, buf, bytes_read);
 
       if(write_all(fd_dst, buf, bytes_read) != 0){
-        fprintf(stderr, "error: failed to write to '%s'\n", header.filename);
+        fprintf(stderr, "error: failed to write to '%s'\n", filename);
         close(fd_dst);
         free(holes);
         return -1;
@@ -351,7 +360,7 @@ int unpack_file(FILE *archive, DirCache *cache, int is_root, int verbose){
       perror("ftruncate");
       close(fd_dst);
       fseek(archive, (long)header.stored_size, SEEK_CUR);
-      unlink(header.filename);
+      unlink(filename);
       free(holes);
       return -1;
     }
@@ -364,9 +373,9 @@ int unpack_file(FILE *archive, DirCache *cache, int is_root, int verbose){
       if (region_start >= region_end) continue;
 
       if (lseek(fd_dst, (off_t)region_start, SEEK_SET) == (off_t)-1) {
-        perror(header.filename);
+        perror(filename);
         close(fd_dst);
-        unlink(header.filename);
+        unlink(filename);
         free(holes);
         return -1;
       }
@@ -377,18 +386,17 @@ int unpack_file(FILE *archive, DirCache *cache, int is_root, int verbose){
         bytes_read = fread(buf, 1, chunk, archive);
         if (bytes_read == 0) {
           fprintf(stderr,
-            "error: unexpected end of archive while reading '%s'\n",
-            header.filename);
+            "error: unexpected end of archive while reading '%s'\n", filename);
           close(fd_dst);
-          unlink(header.filename);
+          unlink(filename);
           free(holes);
           return -1;
         }
         XXH64_update(&state, buf, bytes_read);
         if (write_all(fd_dst, buf, bytes_read) != 0) {
-          fprintf(stderr, "error: failed to write to '%s'\n", header.filename);
+          fprintf(stderr, "error: failed to write to '%s'\n", filename);
           close(fd_dst);
-          unlink(header.filename);
+          unlink(filename);
           free(holes);
           return -1;
         }
@@ -407,8 +415,8 @@ int unpack_file(FILE *archive, DirCache *cache, int is_root, int verbose){
 
   computed_checksum = (uint64_t)XXH64_digest(&state);
   if (computed_checksum != stored_checksum) {
-    fprintf(stderr, "error: checksum mismatch for '%s'\n", header.filename);
-    unlink(header.filename);
+    fprintf(stderr, "error: checksum mismatch for '%s'\n", filename);
+    unlink(filename);
     free(holes);
     return -1;
   }
@@ -418,20 +426,20 @@ int unpack_file(FILE *archive, DirCache *cache, int is_root, int verbose){
   /* Restore ownership before chmod: lchown can clear setuid/setgid bits,
    * so chmod must come after to restore the full mode. */
   if (is_root)
-    lchown(header.filename, (uid_t)header.uid, (gid_t)header.gid);
+    lchown(filename, (uid_t)header.uid, (gid_t)header.gid);
 
-  if(chmod(header.filename, (mode_t)header.mode) != 0)
+  if(chmod(filename, (mode_t)header.mode) != 0)
     perror("chmod");
 
   /* Restore modification time */
   times.actime  = (time_t)header.mtime;
   times.modtime = (time_t)header.mtime;
-  if (utime(header.filename, &times) != 0)
+  if (utime(filename, &times) != 0)
     perror("utime");
 
   if(verbose)
     printf("unpacked: '%s' (%llu bytes)\n",
-      header.filename, (unsigned long long)header.file_size);
+      filename, (unsigned long long)header.file_size);
 
   return 1;
 }

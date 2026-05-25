@@ -23,8 +23,8 @@
 #include "config.h"
 
 #define SPARE_MAGIC "SPA" /* Magic string at start of every header */
-#define SPARE_VERSION 4 /* format version */
-#define SPARE_MAX_PATH 4096 /* max length of stored path */
+#define SPARE_VERSION 5 /* format version */
+#define SPARE_MAX_PATH 4096 /* max path buffer size */
 
 extern int g_nthreads; /* Worker thread count, set by -j flag */
 
@@ -34,20 +34,22 @@ typedef struct {
   uint64_t length;
 } HoleEntry;
 
-/* File header struct for SAR archives, 4152 bytes */
-typedef struct {
-  char     magic[3];                 /* @ 0 */
-  uint8_t  version;                  /* @ 3 */
-  char     filename[SPARE_MAX_PATH]; /* @ 4 */
-  uint32_t mode;                     /* @ 4100 */
-  uint32_t uid;                      /* @ 4104*/
-  uint32_t gid;                      /* @ 4108 */
-  uint64_t file_size;                /* @ 4112, logical file size */
-  int64_t  mtime;                    /* @ 4120 */
-  uint64_t checksum;                 /* @ 4128 */
-  uint64_t stored_size;              /* @ 4136, bytes stored in archive */
-  uint64_t hole_count;               /* @ 4144 num of HoleEntry after header */
-} FileHeader;
+/* File header struct for SPARE archives, 58 bytes.
+ * On disk layout: [ FileHeader | filename[name_len] | HoleEntry[hole_count] | data[stored_size] ] */
+typedef struct __attribute__((packed)) {
+  char     magic[3];        /* @  0 */
+  uint8_t  version;         /* @  3 */
+  uint32_t mode;            /* @  4 */
+  uint32_t uid;             /* @  8 */
+  uint32_t gid;             /* @ 12 */
+  uint64_t file_size;       /* @ 16, logical file size */
+  int64_t  mtime;           /* @ 24 */
+  uint64_t checksum;        /* @ 32 */
+  uint64_t stored_size;     /* @ 40, bytes stored in archive */
+  uint64_t hole_count;      /* @ 48, num of HoleEntry after filename */
+  uint16_t name_len;        /* @ 56, bytes of filename that follow this header */
+} FileHeader;               /* 58 bytes */
+_Static_assert(sizeof(FileHeader) == 58, "FileHeader size changed");
 
 /* Struct for decompression without using disk */
 typedef struct{
@@ -89,7 +91,8 @@ int insert(FILE *archive_path, const char **filepaths, int count, int sparse, in
 int decompress_arch_ram_join(pthread_t thread, DecompressRamArgs *arg);
 void dircache_init(DirCache *c);
 void dircache_free(DirCache *c);
-uint64_t checksum_compute(const FileHeader *h, const HoleEntry *holes,
+uint64_t checksum_compute(const FileHeader *h, const char *filename,
+                          uint16_t name_len, const HoleEntry *holes,
                           uint64_t hole_count, const void *data, uint64_t size);
 
 /* Pointer to function of any action with the FILE* of the uncompressed file

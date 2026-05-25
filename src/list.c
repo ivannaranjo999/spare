@@ -13,6 +13,7 @@
 static int get_filename(FILE *archive){
   /* Local variables */
   FileHeader header;
+  char filename[SPARE_MAX_PATH];
   size_t n;
 
   /* Code */
@@ -34,11 +35,13 @@ static int get_filename(FILE *archive){
     return -1;
   }
 
-  /* Ensure filename is null terminated */
-  header.filename[SPARE_MAX_PATH - 1] = '\0';
-
-  /* Print filename */
-  fprintf(stdout, "%s\n", header.filename);
+  /* Read and print variable-length filename */
+  if(fread(filename, 1, header.name_len, archive) != header.name_len){
+    fprintf(stderr, "error: failed to read filename\n");
+    return -1;
+  }
+  filename[header.name_len] = '\0';
+  fprintf(stdout, "%s\n", filename);
 
   /* Jump to next block */
   fseek(archive, (long)(header.hole_count * sizeof(HoleEntry)

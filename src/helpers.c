@@ -1,6 +1,6 @@
 #include "spare.h"
 
-#define SPARE_PRINT_VERSION "v4.0" /* release version */
+#define SPARE_PRINT_VERSION "v5.0" /* release version */
 
 /* ----------------------------------------------------------------------------
  * Function helpers
@@ -303,7 +303,8 @@ int buffer_stdin_to_file(const char *dst_path) {
  * Computes xxh64 over FileHeader (checksum field zeroed) + hole map + data.
  * Pass holes=NULL & hole_count=0 for non-sparse files (symlinks, dense files).
  * ------------------------------------------------------------------------- */
-uint64_t checksum_compute(const FileHeader *h, const HoleEntry *holes,
+uint64_t checksum_compute(const FileHeader *h, const char *filename,
+  uint16_t name_len, const HoleEntry *holes,
   uint64_t hole_count, const void *data, uint64_t size) {
   /* Local variables */
   FileHeader tmp;
@@ -314,6 +315,7 @@ uint64_t checksum_compute(const FileHeader *h, const HoleEntry *holes,
   tmp.checksum = 0;
   XXH64_reset(&state, 0);
   XXH64_update(&state, &tmp, sizeof(tmp));
+  XXH64_update(&state, filename, name_len);
   if (holes && hole_count > 0)
     XXH64_update(&state, holes, hole_count * sizeof(HoleEntry));
   XXH64_update(&state, data, size);

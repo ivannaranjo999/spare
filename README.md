@@ -99,10 +99,10 @@ Use `-z` when reading a compressed archive from stdin so SPARE knows the format 
 The zero-disk guarantee only holds end-to-end when both sides of the pipe use uncompressed single-threaded operations. For example, `spare pz - | ssh host "spare u - -z"` writes a temp file on **both** machines.
 
 ## The format
-SPA archives are just a flat binary file which is built as a concatenation of blocks, one per file. Each block contains a header and the file contents. The header is a fixed-size C struct storing everything needed to reconstruct the file.
+SPA archives are a flat binary file built as a concatenation of blocks, one per file. Each block starts with a fixed-size header followed by the variable-length filename, an optional hole map, and the file data.
 
 ```
-[ FileHeader | HoleEntry[hole_count] | stored_size bytes ]  ...
+[ FileHeader(58B) | filename[name_len] | HoleEntry[hole_count] | stored_size bytes ]  ...
 ```
 
 ### FileHeader fields
@@ -110,18 +110,20 @@ SPA archives are just a flat binary file which is built as a concatenation of bl
 | Field | Type | Offset | Description |
 |---|---|---|---|
 | magic | char[3] | 0 | Always `"SPA"` |
-| version | uint8 | 3 | Format version (4) |
-| filename | char[4096] | 4 | Stored path |
-| mode | uint32 | 4100 | File permissions and type |
-| uid | uint32 | 4104 | Owner user ID |
-| gid | uint32 | 4108 | Owner group ID |
-| file_size | uint64 | 4112 | Logical file size (`stat st_size`) |
-| mtime | int64 | 4120 | Last-modified time (Unix timestamp) |
-| checksum | uint64 | 4128 | xxh64 of (header with checksum=0) + hole map + data |
-| stored_size | uint64 | 4136 | Bytes of data stored in archive (equals file_size when not sparse) |
-| hole_count | uint64 | 4144 | Number of `HoleEntry` pairs after this header |
+| version | uint8 | 3 | Format version (5) |
+| mode | uint32 | 4 | File permissions and type |
+| uid | uint32 | 8 | Owner user ID |
+| gid | uint32 | 12 | Owner group ID |
+| file_size | uint64 | 16 | Logical file size (`stat st_size`) |
+| mtime | int64 | 24 | Last-modified time (Unix timestamp) |
+| checksum | uint64 | 32 | xxh64 of (header with checksum=0) + filename + hole map + data |
+| stored_size | uint64 | 40 | Bytes of data stored in archive (equals file_size when not sparse) |
+| hole_count | uint64 | 48 | Number of `HoleEntry` pairs after the filename |
+| name_len | uint16 | 56 | Length in bytes of the filename that immediately follows this header |
 
-Total: 4152 bytes, no padding.
+Total: 58 bytes.
+
+After the header, `name_len` bytes of the stored path follow (no null terminator). Then come `hole_count` HoleEntry structs, then `stored_size` bytes of file data.
 
 ### HoleEntry (16 bytes)
 
@@ -132,7 +134,7 @@ Total: 4152 bytes, no padding.
 
 ### Per-file checksums
 
-Every block carries an xxh64 checksum over: the FileHeader (checksum field zeroed), the HoleEntry array, and the stored data bytes. This detects corruption in filenames, permissions, timestamps, sizes, hole maps, and file contents.
+Every block carries an xxh64 checksum over: the FileHeader (checksum field zeroed), the filename bytes, the HoleEntry array, and the stored data bytes. This detects corruption in filenames, permissions, timestamps, sizes, hole maps, and file contents.
 
 ### Sparse file support
 

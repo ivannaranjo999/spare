@@ -354,6 +354,7 @@ static uint64_t assign_offsets(WorkItem *items, int count, uint8_t *mmap_base) {
   for (i = 0; i < count; i++) {
     items[i].dest = mmap_base + offset;
     offset += sizeof(FileHeader)
+      + strlen(items[i].filepath)
       + items[i].hole_count * sizeof(HoleEntry)
       + items[i].stored_size;
   }
@@ -383,8 +384,7 @@ static void fill_header(FileHeader *h, const char *filepath,
   h->uid = uid;
   h->gid = gid;
   h->mtime = mtime;
-  strncpy(h->filename, filepath, SPARE_MAX_PATH - 1);
-  h->filename[SPARE_MAX_PATH - 1] = '\0';
+  h->name_len = (uint16_t)strnlen(filepath, SPARE_MAX_PATH);
 }
 
 /* ----------------------------------------------------------------------------
@@ -407,15 +407,19 @@ static int write_item(const WorkItem *w, int verbose){
   fill_header(header, w->filepath, w->file_size, w->stored_size, w->hole_count,
     w->mode, w->uid, w->gid, w->mtime);
 
-  hole_dest = (HoleEntry *)(w->dest + sizeof(FileHeader));
+  memcpy(w->dest + sizeof(FileHeader), w->filepath, header->name_len);
+
+  hole_dest = (HoleEntry *)(w->dest + sizeof(FileHeader) + header->name_len);
   if (w->hole_count > 0)
     memcpy(hole_dest, w->holes, w->hole_count * sizeof(HoleEntry));
 
-  data_dest = w->dest + sizeof(FileHeader) + w->hole_count * sizeof(HoleEntry);
+  data_dest = w->dest + sizeof(FileHeader) + header->name_len
+              + w->hole_count * sizeof(HoleEntry);
 
   if (S_ISLNK(w->mode)) {
     memcpy(data_dest, w->linkpath, w->file_size);
-    header->checksum = checksum_compute(header, NULL, 0, data_dest, w->file_size);
+    header->checksum = checksum_compute(header, w->filepath, header->name_len,
+      NULL, 0, data_dest, w->file_size);
     if (verbose)
       printf("packed: '%s' -> '%s'\n", w->filepath, w->linkpath);
     return 0;
@@ -435,14 +439,16 @@ static int write_item(const WorkItem *w, int verbose){
 
   close(src_fd);
 
-  header->checksum = checksum_compute(header, w->holes, w->hole_count,
-    w->dest + sizeof(FileHeader) + w->hole_count * sizeof(HoleEntry),
+  header->checksum = checksum_compute(header, w->filepath, header->name_len,
+    w->holes, w->hole_count,
+    w->dest + sizeof(FileHeader) + header->name_len + w->hole_count * sizeof(HoleEntry),
     w->stored_size);
 
   if (verbose)
-    printf("packed: '%s' (%llu + %llu + %llu bytes)\n",
+    printf("packed: '%s' (%llu + %llu + %llu + %llu bytes)\n",
       w->filepath,
       (unsigned long long)sizeof(FileHeader),
+      (unsigned long long)header->name_len,
       (unsigned long long)(w->hole_count * sizeof(HoleEntry)),
       (unsigned long long)w->stored_size);
 
@@ -519,6 +525,7 @@ int pack_threads(const char *archive_path, const char **filepaths, int count,
   total_size = 0;
   for (i = 0; i < n_items; i++)
     total_size += sizeof(FileHeader)
+      + strlen(items[i].filepath)
       + items[i].hole_count * sizeof(HoleEntry)
       + items[i].stored_size;
 
@@ -662,11 +669,15 @@ int pack_file(FILE *archive, const char *filepath, int sparse, int verbose){
     fill_header(&header, filepath, (uint64_t)linklen, (uint64_t)linklen, 0,
       (uint32_t)st.st_mode, (uint32_t)st.st_uid, (uint32_t)st.st_gid,
       (int64_t)st.st_mtime);
-    header.checksum = checksum_compute(&header, NULL, 0,
-      linkbuf, (uint64_t)linklen);
+    header.checksum = checksum_compute(&header, filepath, header.name_len,
+      NULL, 0, linkbuf, (uint64_t)linklen);
 
     if (fwrite(&header, sizeof(header), 1, archive) != 1) {
       fprintf(stderr, "error: failed to write header for '%s'\n", filepath);
+      return -1;
+    }
+    if (fwrite(filepath, 1, header.name_len, archive) != header.name_len) {
+      fprintf(stderr, "error: failed to write filename for '%s'\n", filepath);
       return -1;
     }
     if (fwrite(linkbuf, 1, linklen, archive) != (size_t)linklen) {
@@ -728,6 +739,7 @@ int pack_file(FILE *archive, const char *filepath, int sparse, int verbose){
    * for the write pass costs negligible extra I/O. */
   XXH64_reset(&state, 0);
   XXH64_update(&state, &header, sizeof(header));
+  XXH64_update(&state, filepath, header.name_len);
   if (holes && hole_count > 0)
     XXH64_update(&state, holes, hole_count * sizeof(HoleEntry));
   if (foreach_data_region_fd(src_fd, filepath, holes, hole_count,
@@ -738,6 +750,10 @@ int pack_file(FILE *archive, const char *filepath, int sparse, int verbose){
 
   if (fwrite(&header, sizeof(header), 1, archive) != 1) {
     fprintf(stderr, "error: failed to write header for '%s'\n", filepath);
+    close(src_fd); free(holes); return -1;
+  }
+  if (fwrite(filepath, 1, header.name_len, archive) != header.name_len) {
+    fprintf(stderr, "error: failed to write filename for '%s'\n", filepath);
     close(src_fd); free(holes); return -1;
   }
   if (holes && hole_count > 0) {
@@ -758,9 +774,10 @@ int pack_file(FILE *archive, const char *filepath, int sparse, int verbose){
   free(holes);
 
   if (verbose)
-    printf("packed: '%s' (%llu + %llu + %llu bytes)\n",
+    printf("packed: '%s' (%llu + %llu + %llu + %llu bytes)\n",
       filepath,
       (unsigned long long)sizeof(FileHeader),
+      (unsigned long long)header.name_len,
       (unsigned long long)(hole_count * sizeof(HoleEntry)),
       (unsigned long long)stored_size);
 

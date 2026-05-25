@@ -6,12 +6,25 @@ WORK="$(mktemp -d)"
 PASS=0
 FAIL=0
 
-# sizeof(FileHeader): 3+1+4096+4+4+4+8+8+8+8+8 = 4152 (no padding)
-HEADER_SIZE=4152
-# mtime field offset: 3+1+4096+4+4+4+8 = 4120
-MTIME_OFFSET=4120
-# checksum field offset: 3+1+4096+4+4+4+8+8 = 4128 (not HEADER_SIZE-8; stored_size and hole_count follow it)
-CHECKSUM_OFFSET=4128
+# sizeof(FileHeader): 3+1+4+4+4+8+8+8+8+8+2 = 58 (packed, v5)
+HEADER_SIZE=58
+# mtime field offset: 3+1+4+4+4+8 = 24
+MTIME_OFFSET=24
+# checksum field offset: 3+1+4+4+4+8+8 = 32
+CHECKSUM_OFFSET=32
+
+# Return the byte offset of the first data byte in a .spa archive.
+# In v5 the layout is: FileHeader(58) | filename[name_len] | holes | data.
+# name_len is a uint16_t (little-endian) at offset 56 in the header.
+first_data_offset() {
+  python3 -c "
+import struct
+with open('$1', 'rb') as f:
+    h = f.read(58)
+    name_len = struct.unpack_from('<H', h, 56)[0]
+print(58 + name_len)
+"
+}
 
 die()  { echo "FATAL: $1"; rm -rf "$WORK"; exit 1; }
 ok()   { echo "PASS: $1"; PASS=$((PASS+1)); }
@@ -44,7 +57,7 @@ fi
 
 # --- 2: corrupt data byte -> unpack must fail ---
 cp "$WORK/archive.spa" "$WORK/corrupt_data.spa"
-corrupt_byte "$WORK/corrupt_data.spa" "$HEADER_SIZE"
+corrupt_byte "$WORK/corrupt_data.spa" "$(first_data_offset "$WORK/corrupt_data.spa")"
 out="$WORK/t2" && mkdir "$out"
 if (cd "$out" && "$SPARE" u "$WORK/corrupt_data.spa" 2>/dev/null); then
   fail "corrupt data not detected"
@@ -85,7 +98,7 @@ fi
 
 # --- 6: corrupt data in multi-threaded archive -> unpack must fail ---
 cp "$WORK/mt.spa" "$WORK/mt_corrupt.spa"
-corrupt_byte "$WORK/mt_corrupt.spa" "$HEADER_SIZE"
+corrupt_byte "$WORK/mt_corrupt.spa" "$(first_data_offset "$WORK/mt_corrupt.spa")"
 out="$WORK/t6" && mkdir "$out"
 if (cd "$out" && "$SPARE" u "$WORK/mt_corrupt.spa" 2>/dev/null); then
   fail "corrupt data in mt archive not detected"
@@ -105,7 +118,7 @@ fi
 
 # --- 8: corrupt symlink data -> unpack must fail ---
 cp "$WORK/link.spa" "$WORK/link_corrupt.spa"
-corrupt_byte "$WORK/link_corrupt.spa" "$HEADER_SIZE"
+corrupt_byte "$WORK/link_corrupt.spa" "$(first_data_offset "$WORK/link_corrupt.spa")"
 out="$WORK/t8" && mkdir "$out"
 if (cd "$out" && "$SPARE" u "$WORK/link_corrupt.spa" 2>/dev/null); then
   fail "corrupt symlink data not detected"
@@ -125,7 +138,7 @@ fi
 
 # --- 10: corrupt symlink data in pipeline archive -> unpack must fail ---
 cp "$WORK/link_pipe.spa" "$WORK/link_pipe_corrupt.spa"
-corrupt_byte "$WORK/link_pipe_corrupt.spa" "$HEADER_SIZE"
+corrupt_byte "$WORK/link_pipe_corrupt.spa" "$(first_data_offset "$WORK/link_pipe_corrupt.spa")"
 out="$WORK/t10" && mkdir "$out"
 if (cd "$out" && cat "$WORK/link_pipe_corrupt.spa" | "$SPARE" u - 2>/dev/null); then
   fail "corrupt symlink data in pipeline not detected"
