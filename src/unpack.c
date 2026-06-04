@@ -200,7 +200,7 @@ int unpack_file(FILE *archive, DirCache *cache, int is_root, int verbose){
   uint64_t region_end;
   uint64_t i;
   size_t bytes_read, n, chunk;
-  struct utimbuf times;
+  struct timespec times[2];
   char linkbuf[SPARE_MAX_PATH];
   XXH64_state_t state;
   HoleEntry *holes;
@@ -411,11 +411,10 @@ int unpack_file(FILE *archive, DirCache *cache, int is_root, int verbose){
     }
   }
 
-  close(fd_dst);
-
   computed_checksum = (uint64_t)XXH64_digest(&state);
   if (computed_checksum != stored_checksum) {
     fprintf(stderr, "error: checksum mismatch for '%s'\n", filename);
+    close(fd_dst);
     unlink(filename);
     free(holes);
     return -1;
@@ -423,19 +422,22 @@ int unpack_file(FILE *archive, DirCache *cache, int is_root, int verbose){
 
   free(holes);
 
-  /* Restore ownership before chmod: lchown can clear setuid/setgid bits,
-   * so chmod must come after to restore the full mode. */
+  /* Restore ownership before fchmod */
   if (is_root)
-    lchown(filename, (uid_t)header.uid, (gid_t)header.gid);
+    fchown(fd_dst, (uid_t)header.uid, (gid_t)header.gid);
 
-  if(chmod(filename, (mode_t)header.mode) != 0)
-    perror("chmod");
+  if (fchmod(fd_dst, (mode_t)header.mode) != 0)
+    perror("fchmod");
 
   /* Restore modification time */
-  times.actime  = (time_t)header.mtime;
-  times.modtime = (time_t)header.mtime;
-  if (utime(filename, &times) != 0)
-    perror("utime");
+  times[0].tv_sec  = (time_t)header.mtime;
+  times[0].tv_nsec = 0;
+  times[1].tv_sec  = (time_t)header.mtime;
+  times[1].tv_nsec = 0;
+  if (futimens(fd_dst, times) != 0)
+    perror("futimens");
+
+  close(fd_dst);
 
   if(verbose)
     printf("unpacked: '%s' (%llu bytes)\n",
