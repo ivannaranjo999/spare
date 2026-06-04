@@ -167,6 +167,7 @@ sudo make install
 **User install** (no sudo required, override PREFIX and completion dirs):
 ```
 make install PREFIX=$HOME/.local/bin \
+  MANDIR=$HOME/.local/share/man/man1 \
   BASH_COMPDIR=$HOME/.local/share/bash-completion/completions \
   ZSH_COMPDIR=$HOME/.local/share/zsh/site-functions \
   FISH_COMPDIR=$HOME/.config/fish/completions
@@ -177,12 +178,18 @@ make install PREFIX=$HOME/.local/bin \
 > fpath=(~/.local/share/zsh/site-functions $fpath)
 > ```
 
+> **Man note:** to make `man spare` work for a user install, ensure `~/.local/share/man` is in your `MANPATH`. Add this to your shell config once:
+> ```sh
+> export MANPATH="$HOME/.local/share/man:$MANPATH"
+> ```
+
 To uninstall, run the same command replacing `install` with `uninstall`:
 ```
 sudo make uninstall
 ```
 ```
 make uninstall PREFIX=$HOME/.local/bin \
+  MANDIR=$HOME/.local/share/man/man1 \
   BASH_COMPDIR=$HOME/.local/share/bash-completion/completions \
   ZSH_COMPDIR=$HOME/.local/share/zsh/site-functions \
   FISH_COMPDIR=$HOME/.config/fish/completions
