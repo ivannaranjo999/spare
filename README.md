@@ -38,16 +38,18 @@ Each command is run **three times**; the **median** wall-clock time is reported.
 
 | Operation         | tar     | spare   | spare -j4 |
 |---|---|---|---|
-| Pack              | 19.658s | 21.499s | 13.889s |
-| Pack and compress | 47.003s | 30.079s | 17.650s |
-| Unpack            |  2.691s |  2.843s | - |
-| Unpack compressed |  5.332s |  4.522s | - |
+| Pack              | 19.937s | 27.224s | 13.957s |
+| Pack and compress | 46.747s | 37.231s | 17.897s |
+| Unpack            | 3.401s | 5.713s | -       |
+| Unpack compressed | 5.709s | 7.349s | -       |
 
-**Compressed archive size** (source: 1,568 MB)
+**Compressed archive size**
 
-| tar czf | spare pz | spare -j4 pz |
-|---|---|---|
-| 253 MB (16.9%) | 230 MB (15.4%) | 230 MB (15.4%) |
+| | tar czf | spare pz | spare -j4 pz |
+|---|---|---|---|
+| Size  | 265615532 B | 239405378 B | 238107822 B |
+| Ratio | 16.94% | 15.26% | 15.18% |
+
 
 ---
 
@@ -57,18 +59,17 @@ A raw QEMU disk image: 4 GB logical size, ~820 MB allocated on disk, the rest ze
 
 **Pack: archive size and wall-clock time**
 
-| | tar cf | tar --sparse -cf | spare p | spare -S p | spare -S -j4 p |
+| | tar cf | tar --sparse cf | spare p | spare -S p | spare -S -j4 p |
 |---|---|---|---|---|---|
-| Archive size | - | - | - | - | - |
-| Pack time    | - | - | - | - | - |
+| Archive size | 4294973440 B (100.0%) | 859842560 B (20.0%) | 4294967421 B (100.0%) | 859832461 B (20.0%) | 859832461 B (20.0%) |
+| Pack time    | 13.556s | 4.913s | 18.038s | 4.470s | 4.653s |
 
-**Unpack and hole restoration**
+**Unpack: restoring holes**
 
-| | tar --sparse -xf | spare -S u |
+| | tar --sparse xf | spare -S u |
 |---|---|---|
-| Unpack time | - | - |
+| Unpack time | 2.757s | 4.641s |
 
-*Run `bash bench/bench.sh --sparse-only` to fill in these numbers.*
 
 ## Stdin / Stdout piping
 

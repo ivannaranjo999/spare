@@ -1,6 +1,6 @@
 #include "spare.h"
 
-#define SPARE_PRINT_VERSION "v5.0" /* release version */
+#define SPARE_PRINT_VERSION "v5.1" /* release version */
 
 /* ----------------------------------------------------------------------------
  * Function helpers
