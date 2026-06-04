@@ -1,0 +1,313 @@
+.TH SPARE 1 "2026-05-26" "spare v5.0" "User Commands"
+.SH NAME
+spare \- SParse Archive RElay, archiver with sparse file and streaming support
+.SH SYNOPSIS
+.B spare
+[\fIFLAGS\fR]
+.I action
+.I archive
+[\fIfile\fR ...]
+.SH DESCRIPTION
+.B spare
+creates and extracts SPA archives.
+SPA is a flat binary format: each file is stored as a fixed-size header
+followed by the filename, an optional hole map, and the file data.
+.PP
+With the
+.B \-S
+flag, spare uses
+.BR SEEK_HOLE / SEEK_DATA
+to locate zero regions during packing and records them as holes rather than
+storing the zero bytes.
+On unpack, holes are restored.
+.PP
+Archives can optionally be compressed with
+.BR zstd (1)
+using the
+.B pz
+action, producing a
+.B .szt
+file.
+spare auto-detects the format on read, so a separate flag is not needed for
+unpacking.
+.PP
+Use
+.B \-
+as the archive path to read from stdin or write to stdout.
+.SH ACTIONS
+.TP
+.B p
+Pack one or more files or directories into a new SPA archive.
+Directories are packed recursively; the stored path is the path as given on
+the command line, including all subdirectory components.
+.TP
+.B pz
+Pack and compress.
+Same as
+.BR p ,
+but the resulting archive is compressed with
+.BR zstd (1)
+and written as a
+.B .szt
+file (a valid zstd stream).
+.TP
+.B u
+Unpack a
+.B .spa
+or
+.B .szt
+archive.
+spare auto-detects the format from the file header.
+Permissions, timestamps, uid/gid, and symlinks are restored.
+.TP
+.B l
+List the contents of a
+.B .spa
+or
+.B .szt
+archive, one filename per line.
+.TP
+.B g
+Grab (extract) specific files from an archive without unpacking everything.
+Each
+.I file
+argument is matched as a substring of the stored path.
+.TP
+.B i
+Insert files into an existing archive.
+For
+.B .spa
+archives the new entries are appended; for
+.B .szt
+archives the archive is decompressed, appended to, and re-compressed.
+.SH OPTIONS
+.TP
+.B \-h
+Print a short usage summary and exit.
+.TP
+.B \-V
+Print the version string and exit.
+.TP
+.B \-v
+Verbose output.
+For
+.BR p / pz ,
+prints one line per packed file showing the byte breakdown:
+header + filename + hole map + body.
+Silently disabled when writing to stdout
+.RB ( archive = \- ).
+.TP
+.BI \-j\  N
+Use
+.I N
+worker threads for packing and compression.
+If
+.I N
+is omitted, defaults to the number of online CPU cores
+.RB ( _SC_NPROCESSORS_ONLN ).
+.TP
+.B \-z
+When the archive path is
+.BR \- ,
+treat stdin as a compressed SZT stream.
+Without this flag spare assumes an uncompressed SAR stream from stdin.
+.TP
+.B \-S
+Detect and preserve sparse holes during packing.
+Holes are recorded in the archive and punched back on
+.BR u .
+Falls back to storing the full file on filesystems that do not support
+.BR SEEK_HOLE .
+.TP
+.BI \-C\  dir
+Extract files into
+.I dir
+instead of the current directory.
+The archive path is resolved to an absolute path before the
+.BR chdir (2)
+so relative archive paths still work.
+.SH ARCHIVE FORMAT
+SPA archives are a concatenation of self-describing blocks, one per file:
+.PP
+.RS 4
+.nf
+[ FileHeader(58 B) | filename[name_len] | HoleEntry[hole_count] | data[stored_size] ] \fR...
+.fi
+.RE
+.PP
+The fixed-size header is 58 bytes, packed with no padding.
+It is followed immediately by
+.I name_len
+bytes of the stored file path, then
+.I hole_count
+.B HoleEntry
+structs (16 bytes each), then
+.I stored_size
+bytes of file data.
+.PP
+Every block carries an
+.B xxh64
+checksum over the header (checksum field zeroed), filename bytes, hole map,
+and file data.
+Corruption in filenames, permissions, timestamps, hole maps, or file contents
+is detected on unpack.
+.PP
+Compressed archives
+.RB ( .szt )
+are a standard zstd stream wrapping the entire SPA archive and are readable by
+.B "zstd \-d"
+without spare.
+.SH STDIN \/ STDOUT PIPING
+Use
+.B \-
+as the archive path for streaming operation:
+.PP
+.RS 4
+.nf
+# Copy a directory tree to a remote host without a temporary file
+spare p  \- src/ | ssh user@host "spare u \-"
+
+# Checksum an archive without writing it to disk
+spare p  \- file1 file2 | sha256sum
+
+# Stream a compressed archive to object storage
+spare pz \- src/ | aws s3 cp \- s3://bucket/backup.szt
+
+# Decrypt and unpack in one step
+gpg \-d secrets.szt | spare u \- \-z
+.fi
+.RE
+.PP
+Disk usage per operation when using
+.BR \- :
+.TP
+.BR "spare p \-" " (single-threaded)"
+Zero, writes directly to stdout.
+.TP
+.BR "spare u \-" " (uncompressed)"
+Zero, reads directly from stdin.
+.TP
+.BR "spare p \- \-j N"
+Writes
+.B spare.tmp
+- multithreaded packing requires
+.BR mmap (2),
+which needs a seekable file.
+.TP
+.BR "spare pz \-"
+Writes
+.B spare.tmp
+- the entire archive must exist before compression begins.
+.TP
+.BR "spare u \- \-z"
+Writes
+.B spare.tmp
+- the decompressor requires a seekable path.
+.TP
+.BR "spare l \- \-z" , " spare g \- \-z"
+Writes
+.BR spare.tmp " and " spare_stdin.tmp
+- list/grab require seekable access; stdin is also buffered.
+.SH EXAMPLES
+.SS Packing and unpacking
+.nf
+# Pack a directory
+spare p backup.spa /etc /home/alice
+
+# Pack with zstd compression, using 8 threads
+spare \-j8 pz backup.szt /var/lib/postgresql
+
+# Unpack into /restore
+spare \-C /restore u backup.spa
+
+# List contents
+spare l backup.szt
+.fi
+.SS Sparse VM images
+.nf
+# Pack a raw QEMU disk image, preserving holes (-S)
+spare \-S p vm.spa /var/lib/libvirt/images/debian.raw
+
+# Unpack and restore holes
+spare \-S u vm.spa
+.fi
+.SS Selective extraction
+.nf
+# Extract only files whose stored path contains "passwd" or "shadow"
+spare g backup.spa passwd shadow
+
+# Grab from a compressed archive
+spare g system.szt etc/ssh/sshd_config
+.fi
+.SS Pipelines and remote copy
+.nf
+# Live backup to S3 without a local temp file
+spare p \- /data | aws s3 cp \- s3://my-bucket/data.spa
+
+# Pull files from a remote host
+ssh user@host "spare p \- /etc" | spare u \-
+.fi
+.SH EXIT STATUS
+.TP
+.B 0
+Success.
+.TP
+.B 1
+An error occurred (malformed arguments, I/O failure, corrupt archive, etc.).
+.SH TEMP FILES
+spare may create the following temporary files in the \fIcurrent working directory\fR:
+.TP
+.B spare.tmp
+Used when packing requires an on-disk intermediate archive (multithreaded
+packing to stdout, or
+.B pz
+).
+.TP
+.B spare_stdin.tmp
+Used to buffer stdin when the operation requires a seekable file
+.RB ( l " or " g
+with a compressed stream on stdin).
+.PP
+Both files are removed on successful completion.
+On
+.B SIGINT
+or
+.BR SIGTERM ,
+a signal handler removes any existing temp files before re-raising the signal
+so the shell receives the correct exit status.
+.SH NOTES
+.SS Sparse file support
+Sparse detection and restoration is a Linux-specific feature that relies on
+.B SEEK_HOLE
+.RB ( lseek (2))
+and
+.B FALLOC_FL_PUNCH_HOLE
+.RB ( fallocate (2)).
+On filesystems or kernels that do not support these interfaces, spare falls
+back to storing and restoring files without hole optimisation.
+.SS Checksum algorithm
+spare uses
+.B xxHash XXH64
+for per-file checksums.
+The checksum covers the fixed header (with the checksum field zeroed), the
+variable-length filename, the hole map, and the stored file data.
+Checksums are verified on unpack and list; mismatches abort extraction with
+an error message.
+.SS Format version
+This man page documents format version
+.BR 5 .
+Archives produced by earlier versions of spare are not compatible.
+.SH DEPENDENCIES
+.TP
+.B zstd
+Required at link time for compression/decompression.
+.TP
+.B xxhash
+Header-only library; included at compile time, no linking required.
+.SH SEE ALSO
+.BR tar (1),
+.BR zstd (1),
+.BR fallocate (2),
+.BR lseek (2)
+.SH AUTHORS
+Written by Iván Naranjo Ortega.
