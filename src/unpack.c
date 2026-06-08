@@ -142,7 +142,7 @@ static int mkdir_parents(const char *filepath, DirCache *cache, int verbose){
 
       /* Skip if already created */
       if (!dircache_contains(cache, tmp)) {
-        if (verbose) printf("creating '%s' path ...\n", tmp);
+        if (verbose) printf("mkdir: '%s'\n", tmp);
         if (mkdir(tmp, 0755) != 0 && errno != EEXIST){
           perror(tmp);
           *p = '/';
@@ -443,9 +443,16 @@ int unpack_file(FILE *archive, DirCache *cache, int is_root, int verbose){
 
   close(fd_dst);
 
-  if(verbose)
-    printf("unpacked: '%s' (%llu bytes)\n",
-      filename, (unsigned long long)header.file_size);
+  if (verbose) {
+    char logical[32];
+    fmt_size(logical, sizeof(logical), header.file_size);
+    if (header.hole_count > 0)
+      printf("unpacked: '%s'  %s  (%llu hole%s restored)\n",
+        filename, logical,
+        (unsigned long long)header.hole_count, header.hole_count == 1 ? "" : "s");
+    else
+      printf("unpacked: '%s'  %s\n", filename, logical);
+  }
 
   return 1;
 }

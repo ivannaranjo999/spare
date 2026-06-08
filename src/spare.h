@@ -119,6 +119,7 @@ int decompress_in_disk_and_run(const char *dst_path,
 int just_run(const char *archive_path, const char *mode, ActionFn action_fn, void *user_data);
 int stream_file_to_stdout(const char *path);
 int buffer_stdin_to_file(const char *dst_path);
+void fmt_size(char *buf, size_t n, uint64_t bytes);
 void usage(const char *name);
 void print_version (const char *name);
 

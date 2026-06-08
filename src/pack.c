@@ -444,13 +444,17 @@ static int write_item(const WorkItem *w, int verbose){
     w->dest + sizeof(FileHeader) + header->name_len + w->hole_count * sizeof(HoleEntry),
     w->stored_size);
 
-  if (verbose)
-    printf("packed: '%s' (%llu + %llu + %llu + %llu bytes)\n",
-      w->filepath,
-      (unsigned long long)sizeof(FileHeader),
-      (unsigned long long)header->name_len,
-      (unsigned long long)(w->hole_count * sizeof(HoleEntry)),
-      (unsigned long long)w->stored_size);
+  if (verbose) {
+    char logical[32], stored[32];
+    fmt_size(logical, sizeof(logical), w->file_size);
+    fmt_size(stored,  sizeof(stored),  w->stored_size);
+    if (w->hole_count > 0)
+      printf("packed: '%s'  %s -> %s  (%llu hole%s)\n",
+        w->filepath, logical, stored,
+        (unsigned long long)w->hole_count, w->hole_count == 1 ? "" : "s");
+    else
+      printf("packed: '%s'  %s\n", w->filepath, logical);
+  }
 
   return 0;
 }
@@ -506,8 +510,6 @@ int pack_threads(const char *archive_path, const char **filepaths, int count,
   /* For sparse mode, hole detection is folded into collect_files:  */
   /* each file is opened, lseeked for holes, closed, no data read. */
 
-  if (verbose)
-    printf("pre-allocating files in memory ...\n");
 
   for (i = 0; i < count; i++) {
     if (collect_files(filepaths[i], &items, &n_items, &capacity, sparse) != 0)
@@ -529,9 +531,12 @@ int pack_threads(const char *archive_path, const char **filepaths, int count,
       + items[i].hole_count * sizeof(HoleEntry)
       + items[i].stored_size;
 
-  if (verbose)
-    printf("pack: %d files, total archive size: %llu bytes\n",
-            n_items, (unsigned long long)total_size);
+  if (verbose) {
+    char total[32];
+    fmt_size(total, sizeof(total), total_size);
+    printf("packing %d file%s  ->  %s\n",
+      n_items, n_items == 1 ? "" : "s", total);
+  }
 
   /* --- phase 3: open and pre-allocate output file --------------- */
 
@@ -773,13 +778,17 @@ int pack_file(FILE *archive, const char *filepath, int sparse, int verbose){
   close(src_fd);
   free(holes);
 
-  if (verbose)
-    printf("packed: '%s' (%llu + %llu + %llu + %llu bytes)\n",
-      filepath,
-      (unsigned long long)sizeof(FileHeader),
-      (unsigned long long)header.name_len,
-      (unsigned long long)(hole_count * sizeof(HoleEntry)),
-      (unsigned long long)stored_size);
+  if (verbose) {
+    char logical[32], stored[32];
+    fmt_size(logical, sizeof(logical), (uint64_t)st.st_size);
+    fmt_size(stored,  sizeof(stored),  stored_size);
+    if (hole_count > 0)
+      printf("packed: '%s'  %s -> %s  (%llu hole%s)\n",
+        filepath, logical, stored,
+        (unsigned long long)hole_count, hole_count == 1 ? "" : "s");
+    else
+      printf("packed: '%s'  %s\n", filepath, logical);
+  }
 
   return 0;
 }

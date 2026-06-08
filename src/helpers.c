@@ -6,6 +6,13 @@
  * Function helpers
  * ------------------------------------------------------------------------- */
 
+void fmt_size(char *buf, size_t n, uint64_t bytes) {
+  if      (bytes >= (uint64_t)1 << 30) snprintf(buf, n, "%.1f GB", (double)bytes / ((uint64_t)1 << 30));
+  else if (bytes >= (uint64_t)1 << 20) snprintf(buf, n, "%.1f MB", (double)bytes / ((uint64_t)1 << 20));
+  else if (bytes >= (uint64_t)1 << 10) snprintf(buf, n, "%.1f KB", (double)bytes / ((uint64_t)1 << 10));
+  else                                  snprintf(buf, n, "%llu B",  (unsigned long long)bytes);
+}
+
 /* Arguments for unpack function */
 int do_unpack(FILE *fp, void *user_data){
   UnpackArgs *a = (UnpackArgs *)user_data;
