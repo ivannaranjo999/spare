@@ -4,6 +4,8 @@
 
 SPARE is a fast archiver written in C, designed for sysadmins and storage engineers. Its key feature is **sparse file support**: VM disk images, database files, and other sparse files are packed and restored with their holes intact, so you never pay to store or transfer zero-filled regions.
 
+![SPARE demo](assets/demo.svg)
+
 ```
 Usage:
 Actions:
