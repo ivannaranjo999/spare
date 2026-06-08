@@ -26,7 +26,7 @@ OS page caches are dropped before each run:
 ```
 sync && echo 3 | sudo tee /proc/sys/vm/drop_caches
 ```
-Each command is run **three times**; the **median** wall-clock time is reported. Run `bash bench/bench.sh` to reproduce.
+Each command is run **five times**; the **median** wall-clock time is reported. Run `bash bench/bench.sh` to reproduce.
 
 ---
 
