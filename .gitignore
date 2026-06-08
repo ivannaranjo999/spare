@@ -2,3 +2,4 @@ spare
 *.o
 tools/tmp/
 *.cast
+embed_font.py
