@@ -449,11 +449,11 @@ static int write_item(const WorkItem *w, int verbose){
     fmt_size(logical, sizeof(logical), w->file_size);
     fmt_size(stored,  sizeof(stored),  w->stored_size);
     if (w->hole_count > 0)
-      printf("packed: '%s'  %s -> %s  (%llu hole%s)\n",
+      printf("packed: '%s' %s -> %s (%llu hole%s)\n",
         w->filepath, logical, stored,
         (unsigned long long)w->hole_count, w->hole_count == 1 ? "" : "s");
     else
-      printf("packed: '%s'  %s\n", w->filepath, logical);
+      printf("packed: '%s' %s\n", w->filepath, logical);
   }
 
   return 0;
@@ -534,7 +534,7 @@ int pack_threads(const char *archive_path, const char **filepaths, int count,
   if (verbose) {
     char total[32];
     fmt_size(total, sizeof(total), total_size);
-    printf("packing %d file%s  ->  %s\n",
+    printf("packing %d file%s -> %s\n",
       n_items, n_items == 1 ? "" : "s", total);
   }
 
@@ -783,11 +783,11 @@ int pack_file(FILE *archive, const char *filepath, int sparse, int verbose){
     fmt_size(logical, sizeof(logical), (uint64_t)st.st_size);
     fmt_size(stored,  sizeof(stored),  stored_size);
     if (hole_count > 0)
-      printf("packed: '%s'  %s -> %s  (%llu hole%s)\n",
+      printf("packed: '%s' %s -> %s (%llu hole%s)\n",
         filepath, logical, stored,
         (unsigned long long)hole_count, hole_count == 1 ? "" : "s");
     else
-      printf("packed: '%s'  %s\n", filepath, logical);
+      printf("packed: '%s' %s\n", filepath, logical);
   }
 
   return 0;

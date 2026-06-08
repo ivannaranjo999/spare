@@ -447,11 +447,11 @@ int unpack_file(FILE *archive, DirCache *cache, int is_root, int verbose){
     char logical[32];
     fmt_size(logical, sizeof(logical), header.file_size);
     if (header.hole_count > 0)
-      printf("unpacked: '%s'  %s  (%llu hole%s restored)\n",
+      printf("unpacked: '%s' %s (%llu hole%s restored)\n",
         filename, logical,
         (unsigned long long)header.hole_count, header.hole_count == 1 ? "" : "s");
     else
-      printf("unpacked: '%s'  %s\n", filename, logical);
+      printf("unpacked: '%s' %s\n", filename, logical);
   }
 
   return 1;
