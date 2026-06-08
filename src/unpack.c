@@ -304,6 +304,8 @@ int unpack_file(FILE *archive, DirCache *cache, int is_root, int verbose){
     /* Restore ownership */
     if (is_root)
       lchown(filename, (uid_t)header.uid, (gid_t)header.gid);
+    else
+      lchown(filename, (uid_t)-1, (gid_t)header.gid);
 
     if (verbose)
       printf("unpacked: '%s' -> '%s'\n", filename, linkbuf);
@@ -425,6 +427,8 @@ int unpack_file(FILE *archive, DirCache *cache, int is_root, int verbose){
   /* Restore ownership before fchmod */
   if (is_root)
     fchown(fd_dst, (uid_t)header.uid, (gid_t)header.gid);
+  else
+    fchown(fd_dst, (uid_t)-1, (gid_t)header.gid);
 
   if (fchmod(fd_dst, (mode_t)header.mode) != 0)
     perror("fchmod");
