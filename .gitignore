@@ -1,3 +1,4 @@
 spare
 *.o
 tools/tmp/
+*.cast
