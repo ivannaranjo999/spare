@@ -5,11 +5,7 @@ _spare() {
   cur="${COMP_WORDS[COMP_CWORD]}"
   prev="${COMP_WORDS[COMP_CWORD-1]}"
 
-  # -j expects a number next; -C expects a directory
-  if [[ "$prev" == "-j" ]]; then
-    COMPREPLY=()
-    return
-  fi
+  # -C expects a directory
   if [[ "$prev" == "-C" ]]; then
     _filedir -d
     return
@@ -20,7 +16,7 @@ _spare() {
   for (( i = 1; i < COMP_CWORD; i++ )); do
     case "${COMP_WORDS[i]}" in
       -v|-h|-z|-S|-V) ;;
-      -j) (( i++ )) ;;  # skip the number after -j
+      -j*) ;;  # -j4 is a single token; no next word to skip
       p|pz|u|l|g|i) action="${COMP_WORDS[i]}"; break ;;
     esac
   done
@@ -42,7 +38,7 @@ _spare() {
   for (( i = 1; i < COMP_CWORD; i++ )); do
     case "${COMP_WORDS[i]}" in
       -v|-h|-z|-S|-V) ;;
-      -j) (( i++ )) ;;
+      -j*) ;;
       *) (( pos++ )) ;;
     esac
   done

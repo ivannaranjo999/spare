@@ -49,16 +49,16 @@ roundtrip "p-/u- single" "p -" "u -" "a.txt"
 roundtrip "p-/u- single" "p -" "u -" "subdir/b.txt"
 
 # --- test 2: p - (multi-thread) | u - ---
-roundtrip "p-/u- multi" "-j 4 p -" "u -" "a.txt"
-roundtrip "p-/u- multi" "-j 4 p -" "u -" "subdir/b.txt"
+roundtrip "p-/u- multi" "-j4 p -" "u -" "a.txt"
+roundtrip "p-/u- multi" "-j4 p -" "u -" "subdir/b.txt"
 
 # --- test 3: pz - | u - -z ---
 roundtrip "pz-/u--z single" "pz -" "u - -z" "a.txt"
 roundtrip "pz-/u--z single" "pz -" "u - -z" "subdir/b.txt"
 
 # --- test 4: pz - (multi-thread) | u - -z ---
-roundtrip "pz-/u--z multi" "-j 4 pz -" "u - -z" "a.txt"
-roundtrip "pz-/u--z multi" "-j 4 pz -" "u - -z" "subdir/b.txt"
+roundtrip "pz-/u--z multi" "-j4 pz -" "u - -z" "a.txt"
+roundtrip "pz-/u--z multi" "-j4 pz -" "u - -z" "subdir/b.txt"
 
 # --- test 5: l - (list uncompressed from stdin) ---
 (cd "$WORK" && "$SPARE" p archive.spa src)

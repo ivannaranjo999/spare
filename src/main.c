@@ -24,93 +24,57 @@ int main(int argc, char *argv[]){
   const char *archive_path = NULL;
   const char *extract_dir = NULL;
   const char **filepaths = NULL;
-  char *endptr;
   char abs_archive[SPARE_MAX_PATH];
-  int i = 0;
+  int opt = 0;
   int verbose = 0;
   int nfiles = 0;
   int use_zstream = 0;
   int is_stream = 0;
   int sparse = 0;
   int ret = 0;
-  long val = 0;
   ArchiveFormat archive_format = ARCHIVE_DOESNOTEXIST;
 
   /* Code */
   signal(SIGINT,  cleanup_handler);
   signal(SIGTERM, cleanup_handler);
 
-  /* Consume flags */
-  for (i = 1; i < argc; ++i){
-    if(strcmp(argv[i], "-v") == 0){
-      verbose = 1;
-      argv[i] = NULL;
-    } else if(strcmp(argv[i], "-h") == 0){
-      usage(argv[0]);
-      return 0;
-    } else if(strcmp(argv[i], "-z") == 0){
-      use_zstream = 1;
-      argv[i] = NULL;
-    } else if(strcmp(argv[i], "-j") == 0){
-      argv[i] = NULL;
-      /* By default use num of cores available */
-      g_nthreads = (int)sysconf(_SC_NPROCESSORS_ONLN);
-      if (g_nthreads < 1) g_nthreads = 1;
-      if (i + 1 < argc && argv[i+1] != NULL) {
-        val = strtol(argv[i+1], &endptr, 10);
-        /* endptr stops at the first char that could not parse. Conditions:
-         * - At least one character is consumed && 
-         * - The whole string is consumed */
-        if (endptr != argv[i+1] && *endptr == '\0') {
-          g_nthreads = (int)val;
-          if (g_nthreads < 1) g_nthreads = 1;
-          argv[i+1] = NULL;
-          i++;
-        }
-      }
-    } else if(strncmp(argv[i], "-j", 2) == 0 && argv[i][2] != '\0'){
-      g_nthreads = atoi(argv[i] + 2);
-      if (g_nthreads < 1) g_nthreads = 1;
-      argv[i] = NULL;
-    } else if(strcmp(argv[i], "-V") == 0){
-      print_version(argv[0]);
-      return 0;
-    } else if(strcmp(argv[i], "-S") == 0){
-      sparse = 1;
-      argv[i] = NULL;
-    } else if(strcmp(argv[i], "-C") == 0){
-      argv[i] = NULL;
-      if (i + 1 < argc && argv[i+1] != NULL) {
-        extract_dir = argv[i+1];
-        argv[i+1] = NULL;
-        i++;
+  /* Parse flags */
+  while ((opt = getopt(argc, argv, "vhzSVj::C:")) != -1) {
+    switch (opt) {
+    case 'v': verbose = 1;                                              break;
+    case 'h': usage(argv[0]); return 0;
+    case 'z': use_zstream = 1;                                          break;
+    case 'S': sparse = 1;                                               break;
+    case 'V': print_version(argv[0]); return 0;
+    case 'j':
+      if (optarg) {
+        g_nthreads = atoi(optarg);
+        if (g_nthreads < 1) g_nthreads = 1;
       } else {
-        fprintf(stderr, "error: '-C' requires a directory argument\n");
-        return 1;
+        g_nthreads = (int)sysconf(_SC_NPROCESSORS_ONLN);
+        if (g_nthreads < 1) g_nthreads = 1;
       }
+      break;
+    case 'C':
+      extract_dir = optarg;
+      break;
+    default:
+      usage(argv[0]);
+      return 1;
     }
   }
+
   if (verbose && g_nthreads > 1) printf("number of threads: %d\n", g_nthreads);
 
-  /* Check if min amount of argc is present */
-  if (argc < 3) {
+  if (argc - optind < 2) {
     usage(argv[0]);
     return 1;
   }
-
-  /* Collect positional args */
-  for(i = 1; i < argc; ++i){
-    if(argv[i] == NULL) continue; /* Consumed flag */
-    if(action == NULL) { action = argv[i]; continue; }
-    if(archive_path == NULL) { archive_path = argv[i]; continue; }
-    /* From here just files */
-    if(filepaths  == NULL) { filepaths = (const char **)&argv[i]; }
-    nfiles++;
-  }
-
-  if (action == NULL || archive_path == NULL){
-    usage(argv[0]);
-    return 1;
+  action       = argv[optind++];
+  archive_path = argv[optind++];
+  if (optind < argc) {
+    filepaths = (const char **)&argv[optind];
+    nfiles    = argc - optind;
   }
 
   is_stream = (strcmp(archive_path, "-") == 0);

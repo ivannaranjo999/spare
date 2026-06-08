@@ -125,7 +125,7 @@ else
 fi
 
 # --- 6: multithreaded pack -S + unpack: content preserved ---
-(cd "$WORK" && "$SPARE" p -S -j 2 mt_s.spa src/sparse.bin 2>/dev/null)
+(cd "$WORK" && "$SPARE" -j2 -S p mt_s.spa src/sparse.bin 2>/dev/null)
 out="$WORK/t6" && mkdir "$out"
 (cd "$out" && "$SPARE" u "$WORK/mt_s.spa" 2>/dev/null)
 result=$(python3 -c "

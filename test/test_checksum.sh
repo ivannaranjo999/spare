@@ -87,7 +87,7 @@ else
 fi
 
 # --- 5: normal multi-threaded pack + unpack ---
-(cd "$WORK" && "$SPARE" p -j 2 mt.spa src/hello.txt 2>/dev/null)
+(cd "$WORK" && "$SPARE" -j2 p mt.spa src/hello.txt 2>/dev/null)
 out="$WORK/t5" && mkdir "$out"
 (cd "$out" && "$SPARE" u "$WORK/mt.spa" 2>/dev/null)
 if [ "$(cat "$out/src/hello.txt" 2>/dev/null)" = "hello checksum" ]; then

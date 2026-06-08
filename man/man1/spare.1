@@ -97,10 +97,15 @@ header + filename + hole map + body.
 Silently disabled when writing to stdout
 .RB ( archive = \- ).
 .TP
-.BI \-j\  N
+.BI \-j N
 Use
 .I N
 worker threads for packing and compression.
+.I N
+must immediately follow the flag with no space
+.RB ( \-j4 ,
+not
+.BR "\-j 4" ).
 If
 .I N
 is omitted, defaults to the number of online CPU cores
@@ -187,7 +192,7 @@ Zero, writes directly to stdout.
 .BR "spare u \-" " (uncompressed)"
 Zero, reads directly from stdin.
 .TP
-.BR "spare p \- \-j N"
+.BR "spare p \- \-jN"
 Writes
 .B spare.tmp
 - multithreaded packing requires

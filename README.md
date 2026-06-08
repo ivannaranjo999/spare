@@ -19,7 +19,7 @@ Flags:
   -h         print this help.
   -V         print version.
   -v         verbose output.
-  -j [N]     use N threads for packing and compression (default: all cores).
+  -j[N]      use N threads for packing and compression (default: all cores).
   -z         when archive path is '-', treat stdin as compressed (SZT).
   -S         detect and preserve sparse holes (VM images, database files).
   -C <dir>   extract files into <dir> instead of current directory.
@@ -96,7 +96,7 @@ Use `-z` when reading a compressed archive from stdin so SPARE knows the format 
 | `spare u  -` *(uncompressed)*    | zero |
 | `spare l  -` *(uncompressed)*    | zero |
 | `spare g  -` *(uncompressed)*    | zero |
-| `spare p  - -j N`                | `spare.tmp`: `pack_threads` requires mmap, which needs a seekable file |
+| `spare p  - -jN`                 | `spare.tmp`: `pack_threads` requires mmap, which needs a seekable file |
 | `spare pz -`                     | `spare.tmp`: compression runs on the whole archive after packing, so the packed archive must exist first |
 | `spare u  - -z`                  | `spare.tmp`: the decompressor requires a seekable file path, not a pipe, stdin is buffered first |
 | `spare l  - -z` / `spare g - -z`  | `spare.tmp` + `spare_stdin.tmp`: decompressed archive written to disk (list/grab use fseek), plus stdin buffered |
@@ -145,12 +145,12 @@ Every block carries an xxh64 checksum over: the FileHeader (checksum field zeroe
 
 With the `-S` flag, SPARE uses `SEEK_HOLE`/`SEEK_DATA` to skip zero regions during packing. Only the actual data is stored, holes are recorded in the HoleEntry array and recreated with `fallocate(PUNCH_HOLE)` on unpack. This is a Linux-specific optimisation; on filesystems that don't support it, SPARE falls back to storing the full file.
 
-Sparse detection is folded into the existing pre-scan phase of multithreaded packing (`-j N`): each file is opened, lseeked for holes, then closed, no extra data read. The data is then read only once by the worker threads, skipping hole regions.
+Sparse detection is folded into the existing pre-scan phase of multithreaded packing (`-jN`): each file is opened, lseeked for holes, then closed, no extra data read. The data is then read only once by the worker threads, skipping hole regions.
 
 ## Compression
 When invoked with `pz`/`u`, SPARE compresses and decompresses the entire archive using **zstd**. The output is a standard `.szt` file (a valid zstd stream readable by `zstd -d`).
 
-Compression is applied to the **whole archive** after packing, not per file. Multi-threading (`-j N`) is passed directly to zstd's built-in worker pool, replacing the manual pigz-style approach used with gzip.
+Compression is applied to the **whole archive** after packing, not per file. Multi-threading (`-jN`) is passed directly to zstd's built-in worker pool, replacing the manual pigz-style approach used with gzip.
 
 Only `p` action has its `pz` alternative since SPARE is able to detect in the rest of actions if the provided archive is compressed or not.
 

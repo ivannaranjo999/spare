@@ -71,7 +71,7 @@ check "mtime preserved" "$(stat -c '%Y' "$out/src/a.txt")" "$orig_mtime"
 out_s="$WORK/t7s" && mkdir "$out_s"
 out_m="$WORK/t7m" && mkdir "$out_m"
 (cd "$WORK" && "$SPARE" p t7s.spa src)
-(cd "$WORK" && "$SPARE" -j 4 p t7m.spa src)
+(cd "$WORK" && "$SPARE" -j4 p t7m.spa src)
 (cd "$out_s" && "$SPARE" u "$WORK/t7s.spa")
 (cd "$out_m" && "$SPARE" u "$WORK/t7m.spa")
 check "multi-thread: a.txt"        "$(cat "$out_s/src/a.txt")"        "$(cat "$out_m/src/a.txt")"

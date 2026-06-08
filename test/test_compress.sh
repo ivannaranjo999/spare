@@ -31,7 +31,7 @@ check "pz+u: c.txt"        "$(cat "$WORK/src/c.txt")"        "$(cat "$out/src/c.
 
 # --- 2: pz + u multi-thread roundtrip ---
 out="$WORK/t2" && mkdir "$out"
-(cd "$WORK" && "$SPARE" -j 4 pz t2.szt src)
+(cd "$WORK" && "$SPARE" -j4 pz t2.szt src)
 (cd "$out"  && "$SPARE" u "$WORK/t2.szt")
 check "pz+u multi: a.txt"        "$(cat "$WORK/src/a.txt")"        "$(cat "$out/src/a.txt")"
 check "pz+u multi: subdir/b.txt" "$(cat "$WORK/src/subdir/b.txt")" "$(cat "$out/src/subdir/b.txt")"
@@ -72,7 +72,7 @@ out_s="$WORK/t7s" && mkdir "$out_s"
 out_m="$WORK/t7m" && mkdir "$out_m"
 (cd "$WORK" && "$SPARE" p    t7.spa src)
 (cd "$WORK" && "$SPARE" pz   t7s.szt src)
-(cd "$WORK" && "$SPARE" -j 4 pz t7m.szt src)
+(cd "$WORK" && "$SPARE" -j4 pz t7m.szt src)
 (cd "$out_s" && "$SPARE" u "$WORK/t7s.szt")
 (cd "$out_m" && "$SPARE" u "$WORK/t7m.szt")
 check "st vs mt pz: a.txt"        "$(cat "$out_s/src/a.txt")"        "$(cat "$out_m/src/a.txt")"
