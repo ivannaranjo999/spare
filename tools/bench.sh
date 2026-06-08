@@ -31,8 +31,9 @@ mkdir -p "$TMP"
 TIMEFORMAT="%R"
 
 # ---------------------------------------------------------------------------
-# bench DESC CMD...
-# Runs CMD 3 times, drops caches before each, picks the median wall-clock.
+# bench DESC [--pre SETUP_CMD] CMD...
+# Runs CMD 5 times, drops caches before each, picks the median wall-clock.
+# Optional --pre runs a setup command (untimed) before each cache drop.
 # Result stored in LAST_REAL.
 # ---------------------------------------------------------------------------
 LAST_REAL=0
@@ -40,10 +41,16 @@ LAST_REAL=0
 bench() {
   local desc="$1"
   shift
+  local pre=""
+  if [[ "$1" == "--pre" ]]; then
+    pre="$2"
+    shift 2
+  fi
   local runs=() tf r
 
   printf "  %-34s" "$desc"
-  for _ in 1 2 3; do
+  for _ in 1 2 3 4 5; do
+    [[ -n "$pre" ]] && bash -c "$pre"
     sync && echo 3 | sudo tee /proc/sys/vm/drop_caches >/dev/null 2>&1
     tf=$(mktemp)
     { time "$@" >/dev/null 2>&1; } 2>"$tf"
@@ -53,7 +60,7 @@ bench() {
     printf "."
   done
 
-  LAST_REAL=$(printf '%s\n' "${runs[@]}" | sort -n | sed -n '2p')
+  LAST_REAL=$(printf '%s\n' "${runs[@]}" | sort -n | sed -n '3p')
   printf "  %7.3fs\n" "$LAST_REAL"
 }
 
@@ -77,27 +84,27 @@ run_kernel_bench() {
 
   echo ""
   echo "=== Suite 1: Linux kernel 7.0 source tree ==="
-  printf "    Source: %s bytes  |  Threads: %d  |  Median of 3 runs\n" "$SRC_SIZE" "$J"
+  printf "    Source: %s bytes  |  Threads: %d  |  Median of 5 runs\n" "$SRC_SIZE" "$J"
 
   # -- Pack ----------------------------------------------------------------
   echo ""
   echo "[ Pack ]"
-  bench "tar cf" tar cf "$TMP/k.tar" "$KERNEL_SRC"
+  bench "tar cf" --pre "rm -f '$TMP/k.tar'" tar cf "$TMP/k.tar" "$KERNEL_SRC"
   TAR_P=$LAST_REAL
-  bench "spare p" "$SPARE" p "$TMP/k.spa" "$KERNEL_SRC"
+  bench "spare p" --pre "rm -f '$TMP/k.spa'" "$SPARE" p "$TMP/k.spa" "$KERNEL_SRC"
   SPA_P=$LAST_REAL
-  bench "spare -j$J p" "$SPARE" -j$J p "$TMP/k_mt.spa" "$KERNEL_SRC"
+  bench "spare -j$J p" --pre "rm -f '$TMP/k_mt.spa'" "$SPARE" -j$J p "$TMP/k_mt.spa" "$KERNEL_SRC"
   SPJ_P=$LAST_REAL
   rm -f "$TMP/k.tar" "$TMP/k.spa" "$TMP/k_mt.spa"
 
   # -- Pack + compress ------------------------------------------------------
   echo ""
   echo "[ Pack and compress ]"
-  bench "tar czf" tar czf "$TMP/k.tar.gz" "$KERNEL_SRC"
+  bench "tar czf" --pre "rm -f '$TMP/k.tar.gz'" tar czf "$TMP/k.tar.gz" "$KERNEL_SRC"
   TAR_Z=$LAST_REAL
-  bench "spare pz" "$SPARE" pz "$TMP/k.szt" "$KERNEL_SRC"
+  bench "spare pz" --pre "rm -f '$TMP/k.szt'" "$SPARE" pz "$TMP/k.szt" "$KERNEL_SRC"
   SPA_Z=$LAST_REAL
-  bench "spare -j$J pz" "$SPARE" -j$J pz "$TMP/k_mt.szt" "$KERNEL_SRC"
+  bench "spare -j$J pz" --pre "rm -f '$TMP/k_mt.szt'" "$SPARE" -j$J pz "$TMP/k_mt.szt" "$KERNEL_SRC"
   SPJ_Z=$LAST_REAL
 
   local TAR_Z_SIZE SPA_Z_SIZE SPJ_Z_SIZE TAR_Z_RATIO SPA_Z_RATIO SPJ_Z_RATIO
@@ -116,10 +123,9 @@ run_kernel_bench() {
   "$SPARE" p "$TMP/k_u.spa" "$KERNEL_SRC" 2>/dev/null
   local UDIR
   UDIR=$(mktemp -d)
-  local SETUP="rm -rf '${UDIR:?}/'* && mkdir -p '$UDIR'"
-  bench "tar xf" bash -c "$SETUP && tar xf '$TMP/k_u.tar' -C '$UDIR'"
+  bench "tar xf" --pre "rm -rf '${UDIR:?}/'*" bash -c "tar xf '$TMP/k_u.tar' -C '$UDIR'"
   TAR_U=$LAST_REAL
-  bench "spare u" bash -c "$SETUP && '$SPARE' u -C '$UDIR' '$TMP/k_u.spa'"
+  bench "spare u" --pre "rm -rf '${UDIR:?}/'*" bash -c "'$SPARE' u -C '$UDIR' '$TMP/k_u.spa'"
   SPA_U=$LAST_REAL
   rm -rf "$UDIR" "$TMP/k_u.tar" "$TMP/k_u.spa"
 
@@ -129,10 +135,9 @@ run_kernel_bench() {
   tar czf "$TMP/k_u.tar.gz" "$KERNEL_SRC" 2>/dev/null
   # k.szt is still present from the pack+compress section above
   UDIR=$(mktemp -d)
-  SETUP="rm -rf '${UDIR:?}/'* && mkdir -p '$UDIR'"
-  bench "tar xzf" bash -c "$SETUP && tar xzf '$TMP/k_u.tar.gz' -C '$UDIR'"
+  bench "tar xzf" --pre "rm -rf '${UDIR:?}/'*" bash -c "tar xzf '$TMP/k_u.tar.gz' -C '$UDIR'"
   TAR_UZ=$LAST_REAL
-  bench "spare u" bash -c "$SETUP && '$SPARE' u -C '$UDIR' '$TMP/k.szt'"
+  bench "spare u" --pre "rm -rf '${UDIR:?}/'*" bash -c "'$SPARE' u -C '$UDIR' '$TMP/k.szt'"
   SPA_UZ=$LAST_REAL
   rm -rf "$UDIR" "$TMP/k_u.tar.gz" "$TMP/k.szt"
 
@@ -175,24 +180,24 @@ run_sparse_bench() {
 
   echo ""
   echo "=== Suite 2: Sparse QEMU VM image (4 GB, ~20% real data) ==="
-  printf "    Logical: %d bytes  |  Threads: %d  |  Median of 3 runs\n" "$LOGICAL_SIZE" "$J"
+  printf "    Logical: %d bytes  |  Threads: %d  |  Median of 5 runs\n" "$LOGICAL_SIZE" "$J"
 
   # -- Pack -----------------------------------------------------------------
   echo ""
   echo "[ Pack ]"
-  bench "tar cf  (no sparse)" tar cf "$TMP/vm.tar" "$VM_IMG"
+  bench "tar cf  (no sparse)" --pre "rm -f '$TMP/vm.tar'" tar cf "$TMP/vm.tar" "$VM_IMG"
   TAR_P=$LAST_REAL
   TAR_P_SZ=$(stat -c%s "$TMP/vm.tar")
-  bench "tar --sparse -cf (sparse)" tar --sparse -cf "$TMP/vm_s.tar" "$VM_IMG"
+  bench "tar --sparse -cf (sparse)" --pre "rm -f '$TMP/vm_s.tar'" tar --sparse -cf "$TMP/vm_s.tar" "$VM_IMG"
   TARS_P=$LAST_REAL
   TARS_P_SZ=$(stat -c%s "$TMP/vm_s.tar" 2>/dev/null || echo 0)
-  bench "spare p  (no -S)" "$SPARE" p "$TMP/vm.spa" "$VM_IMG"
+  bench "spare p  (no -S)" --pre "rm -f '$TMP/vm.spa'" "$SPARE" p "$TMP/vm.spa" "$VM_IMG"
   SPA_P=$LAST_REAL
   SPA_P_SZ=$(stat -c%s "$TMP/vm.spa")
-  bench "spare -S p" "$SPARE" -S p "$TMP/vm_s.spa" "$VM_IMG"
+  bench "spare -S p" --pre "rm -f '$TMP/vm_s.spa'" "$SPARE" -S p "$TMP/vm_s.spa" "$VM_IMG"
   SPAS_P=$LAST_REAL
   SPAS_P_SZ=$(stat -c%s "$TMP/vm_s.spa")
-  bench "spare -S -j$J p" "$SPARE" -S -j$J p "$TMP/vm_sm.spa" "$VM_IMG"
+  bench "spare -S -j$J p" --pre "rm -f '$TMP/vm_sm.spa'" "$SPARE" -S -j$J p "$TMP/vm_sm.spa" "$VM_IMG"
   SPASM_P=$LAST_REAL
   SPASM_P_SZ=$(stat -c%s "$TMP/vm_sm.spa")
   rm -f "$TMP/vm.tar" "$TMP/vm.spa"
@@ -202,10 +207,9 @@ run_sparse_bench() {
   echo "[ Unpack, restoring holes ]"
   local UDIR
   UDIR=$(mktemp -d)
-  local SETUP="rm -rf '${UDIR:?}/'* && mkdir -p '$UDIR'"
-  bench "tar --sparse -xf" bash -c "$SETUP && tar --sparse -xf '$TMP/vm_s.tar' -C '$UDIR'"
+  bench "tar --sparse -xf" --pre "rm -rf '${UDIR:?}/'*" bash -c "tar --sparse -xf '$TMP/vm_s.tar' -C '$UDIR'"
   TARS_U=$LAST_REAL
-  bench "spare -S u" bash -c "$SETUP && '$SPARE' u -C '$UDIR' '$TMP/vm_s.spa'"
+  bench "spare -S u" --pre "rm -rf '${UDIR:?}/'*" bash -c "'$SPARE' u -C '$UDIR' '$TMP/vm_s.spa'"
   SPAS_U=$LAST_REAL
   rm -rf "$UDIR" "$TMP/vm_s.tar" "$TMP/vm_s.spa" "$TMP/vm_sm.spa"
 
