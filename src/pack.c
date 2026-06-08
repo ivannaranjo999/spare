@@ -324,15 +324,16 @@ static int collect_files(const char *filepath, WorkItem **items, int *count,
     (uint32_t)st.st_mode, (uint32_t)st.st_uid, (uint32_t)st.st_gid,
     (int64_t)st.st_mtime);
 
-  /* fold hole detection into the pre-scan: open+lseek+close, no data read */
-  if (sparse && st.st_size > 0) {
-    fd = open(filepath, O_RDONLY);
-    if (fd >= 0) {
-      build_hole_map(fd, (uint64_t)st.st_size, &w->holes, &w->hole_count, 
-        &w->stored_size);
-      close(fd);
-    }
+  /* verify file is readable before committing it to the work list */
+  fd = open(filepath, O_RDONLY);
+  if (fd < 0) {
+    fprintf(stderr, "skipping '%s': %s\n", filepath, strerror(errno));
+    return 0;
   }
+  if (sparse && st.st_size > 0)
+    build_hole_map(fd, (uint64_t)st.st_size, &w->holes, &w->hole_count,
+      &w->stored_size);
+  close(fd);
 
   (*count)++;
   return 0;
@@ -727,8 +728,8 @@ int pack_file(FILE *archive, const char *filepath, int sparse, int verbose){
   /* Open source */
   src_fd = open(filepath, O_RDONLY);
   if (src_fd < 0){
-    perror(filepath);
-    return -1;
+    fprintf(stderr, "skipping '%s': %s\n", filepath, strerror(errno));
+    return 0;
   }
 
   stored_size = (uint64_t)st.st_size;
