@@ -46,15 +46,20 @@ int main(int argc, char *argv[]){
     case 'z': use_zstream = 1;                                          break;
     case 'S': sparse = 1;                                               break;
     case 'V': print_version(argv[0]); return 0;
-    case 'j':
-      if (optarg) {
-        g_nthreads = atoi(optarg);
+    case 'j': {
+      char *p = optarg;
+      if (p && isdigit((unsigned char)*p)) {
+        g_nthreads = atoi(p);
         if (g_nthreads < 1) g_nthreads = 1;
+        while (isdigit((unsigned char)*p)) p++;
       } else {
         g_nthreads = (int)sysconf(_SC_NPROCESSORS_ONLN);
         if (g_nthreads < 1) g_nthreads = 1;
       }
+      /* re-inject trailing letters (e.g. -jvS or -j4vS) back into getopt */
+      if (p && *p) { *(p - 1) = '-'; argv[--optind] = p - 1; }
       break;
+    }
     case 'C':
       extract_dir = optarg;
       break;
